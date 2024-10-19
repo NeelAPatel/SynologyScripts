@@ -10,26 +10,19 @@ import piexif
 import re
 import shutil
 import win32com.client
-
-
+import dateRecallFunctions as drf
+import ffmpeg
 # CONSTANTS
 
-FILE_TYPE = ".JPEG".lower()
-SOURCE_PATH = r"E:\GPhotos-Metadatafixer\2024-10-01-173418557\AAATotal\Error" + FILE_TYPE.replace('.', "")
+FILE_TYPE = ".JPG".lower()
+SOURCE_PATH = str(r"E:\GPhotos-Metadatafixer\2024-10-01-173418557\AAATotal\Error" + FILE_TYPE.replace('.', "")+ "\\bleh")
 
 PROCESSED_PATH = SOURCE_PATH + "\\Processed"
 SKIPPED_PATH = SOURCE_PATH + "\\Skipped"
 
 
-def check_constants(): 
-    print(FILE_TYPE)
-    print(SOURCE_PATH)
-
-
 def walk_directory(dir_to_walk, printflag, countflag): 
     print("Walking directory...")
-
-
     files = []
     for file_name in os.listdir(dir_to_walk):
         # print(file_name)
@@ -43,228 +36,18 @@ def walk_directory(dir_to_walk, printflag, countflag):
     if countflag: 
         print(len(files))
 
-def get_date_from_filename(file_name):
-    date_patterns = [
-        r'(\d{4})(\d{2})(\d{2})',    # YYYYMMDD
-        r'(\d{4})-(\d{2})-(\d{2})'   # YYYY-MM-DD
-    ]
-    for pattern in date_patterns:
-        match = re.search(pattern, file_name)
-        # print(f'    > Checking pattern {pattern} in filename {file_name}')  # Debug info
-        if match:
-            year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
-            current_year = datetime.now().year
-            # Ensure valid date components
-            # print(f'    > Extracted year: {year}, month: {month}, day: {day}')
-            if 1 <= month <= 12 and 1 <= day <= 31 and year <= current_year:
-                return datetime(year, month, day)
-    
-    # print("    > No date found in filename")
-    return None
-
-def get_time_from_filename(file_name):
-    time_patterns = [
-        r'(\d{2})(\d{2})(\d{2})',    # HHMMSS
-        r'(\d{2}):(\d{2}):(\d{2})',  # HH:MM:SS
-        r'(\d{2})_(\d{2})_(\d{2})'   # HH_MM_SS (common format)
-    ]
-    for pattern in time_patterns:
-        match = re.search(pattern, file_name)
-        if match:
-            hour, minute, second = int(match.group(1)), int(match.group(2)), int(match.group(3))
-            # Ensure valid time components
-            if 0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59:
-                return datetime(1, 1, 1, hour, minute, second).time()
-    
-    # print("    > No time found in filename")
-    return None
-
-def get_date_from_creation_date(file_path):
-    # print("  > FileCreation Date: ")
-    try:
-        creation_time = os.path.getctime(file_path)
-        # print(f"    > Date Found : {str(creation_time)}")
-        return datetime.fromtimestamp(creation_time)
-    except Exception as e:
-        print(f"    > ERROR @ FileCreation: Cannot get file creation date for {file_path}: {e}")
-    return None
-
-def get_date_from_modified_date(file_path):
-    # print("  > FileModified Date: ")
-    try:
-        modified_time = os.path.getmtime(file_path)
-        # print(f"    > Date Found: {modified_time}")
-        return datetime.fromtimestamp(modified_time)
-    except Exception as e:
-        print(f"    > ERROR @ FileModified: Cannot get file modified date for {file_path}: {e}")
-    return None
-
-def get_date_from_metadata(file_path):
-# Function to extract metadata date using hachoir
-    print("> Metadata: ")
-    try:
-        parser = createParser(file_path)
-        if not parser:
-            print(f"  > @Metadata: Unable to create parser for {file_path}")
-            return None
-
-        metadata = extractMetadata(parser)
-        if not metadata:
-            print(f"  > Metadata: No metadata found for {file_path}")
-            return None
-
-        # Try to get the creation date from metadata
-        create_date = metadata.get('creation_date')
-        if create_date:
-            # print("    > Date Found: "+ create_date)
-            return create_date
-        else:
-            print("  > Metadata: Metadata does not contain 'creation_date'")
-    except Exception as e:
-        print(f"  > @Metadata : Metadata extraction failed for {file_path}: {e}")
-    
-    return None
-
-def get_date_from_EXIF(file_path):
-    print("> EXIF: ")
-    try:
-        image = Image.open(file_path)
-        info = image._getexif()
-        if info:
-            print("  > EXIF Data found ")
-            # print(info)
-            for tag, value in info.items():
-                decoded = TAGS.get(tag, tag)
-                if decoded == 'DateTimeOriginal':
-                    print("  > Date found: " + datetime.strptime(value, '%Y:%m:%d %H:%M:%S'))
-                    return datetime.strptime(value, '%Y:%m:%d %H:%M:%S')
-    except Exception as e:
-        print(f"  > ERROR @ EXIF: Error extracting EXIF data from {file_path}: {e}")
-    return None
-
-def get_date_from_dateAcquired(filepath):
-    """
-    Retrieves the 'Date acquired' property for a file in Windows Explorer.
-    """
-    # Ensure file exists
-    if not os.path.exists(filepath):
-        print(f"    > File acquired: file does not exist: {filepath}")
-        return None
-    
-    # Use Windows Shell COM object to get file properties
-    shell = win32com.client.Dispatch("Shell.Application")
-    
-    # Get the folder and file name
-    folder_path, file_name = os.path.split(filepath)
-    
-    # Get the folder object
-    folder = shell.Namespace(folder_path)
-    
-    # Find the index for the "Date acquired" property (property index 217)
-    # Note: Index might vary by Windows version, but 217 is common for "Date acquired"
-    date_acquired_idx = 217
-    
-    # Get file item
-    item = folder.ParseName(file_name)
-    
-    # Retrieve the "Date acquired" property
-    date_acquired = folder.GetDetailsOf(item, date_acquired_idx)
-    
-    if date_acquired:
-        return date_acquired
-    else:
-        # print(f"    > Date acquired not found for: {filepath}")
-        return None
-
-def get_date_from_JSON(source_path, file_name):
-
-    json_file_name = str(file_name + ".json")
-    currdir_json_path = os.path.join(source_path, str(file_name + ".json"))
-
-    gphotos_json_path = "F:\\GPhotos\\Takeout\\Google Photos"
-
-
-    fileFoundFlag = 0
-    for root, dirs, files in os.walk(gphotos_json_path): 
-        for file in files: 
-            # print(file)
-            if file == json_file_name: 
-                # print("File Found: ", file_path)
-                file_path = os.path.join(root, file)
-                # print("File Found: ", file_path)
-                info = parse_json(file_path) 
-                return info
-
-
-
-    return None
-
-def parse_json(file_path): 
-    with open(file_path, 'r', encoding='utf-8') as f:
-        try:
-            data = json.load(f)
-
-            # Extract date/time and location information
-            info = {
-                "file_path": file_path,
-                "dates_times": [],
-                "locations": []
-            }
-            
-
-            format1 = '%Y:%m:%d %H:%M:%S'
-            format2 = "%b %d, %Y, %I:%M:%S\u202f%p %Z"
-
-            # print(type(data["creationTime"]["formatted"]))
-            # Scan the JSON for date/time fields
-
-            
-            if "creationTime" in data and "formatted" in data["creationTime"]:
-                rawdate = data["creationTime"]["formatted"]
-                datetime_value = datetime.strptime(rawdate, format2)
-                datetime_value = datetime_value.replace(tzinfo=timezone.utc)
-                info["dates_times"].append(("creationTime", datetime_value))
-
-            if "photoTakenTime" in data and "formatted" in data["photoTakenTime"]:
-                rawdate =  data["photoTakenTime"]["formatted"]
-                datetime_value = datetime.strptime(rawdate, format2)
-                datetime_value = datetime_value.replace(tzinfo=timezone.utc)
-                info["dates_times"].append(("photoTakenTime",datetime_value))
-
-            # Scan for location data
-            if "geoData" in data:
-                geo = data["geoData"]
-                if geo["latitude"] != 0.0 or geo["longitude"] != 0.0:
-                    info["locations"].append({
-                        "latitude": geo["latitude"],
-                        "longitude": geo["longitude"],
-                        "altitude": geo["altitude"]
-                    })
-            if "geoDataExif" in data:
-                geo_exif = data["geoDataExif"]
-                if geo_exif["latitude"] != 0.0 or geo_exif["longitude"] != 0.0:
-                    info["locations"].append({
-                        "latitude": geo_exif["latitude"],
-                        "longitude": geo_exif["longitude"],
-                        "altitude": geo_exif["altitude"]
-                    })
-            
-            return info
-            
-        except json.JSONDecodeError:
-            print(f"Error decoding JSON from file: {file_path}")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-    return None
 
 def print_readable_format(data):
 
     if data is None: 
         return None
     else:
+
+        json_name = os.path.basename(data['file_path'])
+        json_path = data['file_path']
         print()
-        print(f"  File Path: {data['file_path']}")
-        print("  Dates/Times:")
+        print(f"  JSON name: {json_name}")
+        print(f"  Dates/Times:")
         count = 8
         for dt in data['dates_times']:
             print(f"    - [{count}] {dt[0]}, {dt[1]}, {type(dt[1])}")
@@ -300,8 +83,8 @@ def copy_and_check(source, destination):
         existing_size = existing_stat.st_size
 
     # Perform the copy operation with metadata preservation
-    print("COpying from: ", source)
-    print("Copying to: ", destination)
+    # print("COpying from: ", source)
+    # print("Copying to: ", destination)
     shutil.copy2(source, destination)
 
     # Check if the file exists after the copy operation
@@ -323,16 +106,108 @@ def copy_and_check(source, destination):
     else:
         print("Error: File was not copied.")
 
-def convert_degrees_to_rational(degrees):
-    # Converts decimal degrees into a rational format needed by EXIF
-    return (int(degrees[0]), 1), (int(degrees[1]), 1), (int(degrees[2] * 100), 100)
+def override_video_data(destinationfilepath, selected_date, selected_location):
+    # Convert the selected date to the appropriate format for video metadata
+    exif_date_str = selected_date.strftime("%Y-%m-%dT%H:%M:%S")  # ffmpeg uses this format for metadata
+    # Update EXIF date values (This would be ffmpeg metadata for video)
+    # Here, we pass the `exif_date_str` as metadata
+    # For video, we use the 'creation_time' metadata tag to update the date
+    # Note: Video doesn't have multiple EXIF date fields, just one creation date field
+    try:
+        # Prepare ffmpeg command to update the video metadata
+        ffmpeg.input(destinationfilepath).output(destinationfilepath,
+            **{
+                'metadata': f'creation_time={exif_date_str}',  # Set video creation time
+            }
+        ).run()
 
-def override_data(destinationfilepath, selecteddate, selectedlocation): 
+        print(f"\033[92mVideo metadata updated for {destinationfilepath}\033[0m")
+    except Exception as e:
+        print(f"\033[91mFailed to update video metadata: {e}\033[0m")
+
+
+    # Update file system times
+    if isinstance(selected_date, str):
+        new_datetime = datetime.datetime.strptime(selected_date, "%Y:%m:%d %H:%M:%S")
+    else:
+        new_datetime = selected_date
+    
+    timestamp = new_datetime.timestamp()
+
+    # Update file system access and modification times
+    os.utime(destinationfilepath, (timestamp, timestamp))
+
+
+
+
+def convert_degrees_to_rational(deg):
+    """Helper function to convert degrees into rational format required for EXIF."""
+    d = int(deg[0])
+    m = int(deg[1])
+    s = deg[2] * 100
+    return ((d, 1), (m, 1), (int(s), 100))
+
+def convert_rational_to_degrees(rational):
+    """Helper function to convert rational format back to degrees."""
+    d = rational[0][0] / rational[0][1]
+    m = rational[1][0] / rational[1][1]
+    s = rational[2][0] / rational[2][1] / 100
+    return d + (m / 60.0) + (s / 3600.0)
+
+
+def override_image_data(destinationfilepath, selected_date, selected_location): 
     # Open the image and load existing EXIF data
     img = Image.open(destinationfilepath)
     # Check if EXIF data is present
     if 'exif' in img.info:
         exif_dict = piexif.load(img.info['exif'])
+        print("EXIF DICT")
+        print(exif_dict)
+        print(img.getdata())
+        print(img.getexif())
+        exifdata = img.getexif()
+        for tag_id in exifdata:
+            # get the tag name, instead of human unreadable tag id
+            tag = TAGS.get(tag_id, tag_id)
+            data = exifdata.get(tag_id)
+            # decode bytes
+            if isinstance(data, bytes):
+                data = data.decode()
+            print(f"{tag:25}: {data}")
+
+
+        # if GPS in exif
+            # do nothing
+        # if GPS not in exif and GPS in selected
+            # add
+        # if gps not in exif and GPS not in selected
+            # do nothing
+            
+
+
+        # Check if GPS data is present and print it
+        if 'GPS' in exif_dict and exif_dict['GPS']:
+            try:
+                gps_data = exif_dict['GPS']
+                print()
+                print(str(exif_dict['GPS']))
+                print(gps_data[piexif.GPSIFD.GPSLatitude])
+                lat = convert_rational_to_degrees(gps_data[piexif.GPSIFD.GPSLatitude])
+                lon = convert_rational_to_degrees(gps_data[piexif.GPSIFD.GPSLongitude])
+                lat_ref = gps_data[piexif.GPSIFD.GPSLatitudeRef].decode('utf-8')
+                lon_ref = gps_data[piexif.GPSIFD.GPSLongitudeRef].decode('utf-8')
+                
+                # Adjust for N/S and E/W directions
+                if lat_ref == 'S':
+                    lat = -lat
+                if lon_ref == 'W':
+                    lon = -lon
+                
+                print(f"Existing GPS coordinates: Latitude: {lat} {lat_ref}, Longitude: {lon} {lon_ref}")
+            except KeyError as e:
+                print(f"Error extracting GPS info: {e}")
+        else:
+            print("\033[91mNo GPS data found in EXIF\033[0m")
     else:
         # Print statement if EXIF data is not present and create a new EXIF dictionary
         print("\033[91mEXIF data not present\033[0m")
@@ -341,107 +216,149 @@ def override_data(destinationfilepath, selecteddate, selectedlocation):
 
 
 
-    exif_date_str = selecteddate.strftime("%Y:%m:%d %H:%M:%S")
+    # exif_date_str = selected_date.strftime("%Y:%m:%d %H:%M:%S")
 
 
-    # Update EXIF date values
-    exif_dict['0th'][piexif.ImageIFD.DateTime] = exif_date_str
-    exif_dict['Exif'][piexif.ExifIFD.DateTimeOriginal] = exif_date_str
-    exif_dict['Exif'][piexif.ExifIFD.DateTimeDigitized] = exif_date_str
+    # # Update EXIF date values
+    # exif_dict['0th'][piexif.ImageIFD.DateTime] = exif_date_str
+    # exif_dict['Exif'][piexif.ExifIFD.DateTimeOriginal] = exif_date_str
+    # exif_dict['Exif'][piexif.ExifIFD.DateTimeDigitized] = exif_date_str
 
+    # # Check and update location data if needed
+    # if selected_location and 'GPS' not in exif_dict or not exif_dict['GPS']:
+    #     print("No existing GPS data, updating with provided location.")
+    #     # Extract latitude and longitude from the location
+    #     new_lat = selected_location[0]["latitude"]
+    #     new_lon = selected_location[0]["longitude"]
+        
+    #     print("NEW LAT: ", str(new_lat))
+    #     print("NEW LON: ", str(new_lon))
 
-    if selectedlocation is not None and selectedlocation: 
-        # Update GPS information
-        gps_ifd = {
-            # piexif.GPSIFD.GPSLatitudeRef: b'N' if new_lat[0] >= 0 else b'S',
-            # piexif.GPSIFD.GPSLatitude: convert_degrees_to_rational(new_lat),
-            # piexif.GPSIFD.GPSLongitudeRef: b'E' if new_lon[0] >= 0 else b'W',
-            # piexif.GPSIFD.GPSLongitude: convert_degrees_to_rational(new_lon),
-        }
-        exif_dict['GPS'] = gps_ifd
+    #     if (new_lat != 0.0) and (new_lon != 0.0):
+    #         gps_ifd = {
+    #             piexif.GPSIFD.GPSLatitudeRef: b'N' if new_lat >= 0 else b'S',
+    #             piexif.GPSIFD.GPSLatitude: convert_degrees_to_rational([abs(new_lat), 0, 0]),  # Assuming basic format
+    #             piexif.GPSIFD.GPSLongitudeRef: b'E' if new_lon >= 0 else b'W',
+    #             piexif.GPSIFD.GPSLongitude: convert_degrees_to_rational([abs(new_lon), 0, 0]),
+    #         }
+    #         exif_dict['GPS'] = gps_ifd
+    #     else:
+    #         print("Geolocation values are all zero; skipping GPS update.")
+    # else:
+    #     print("EXIF already has GPS data or no valid location data provided. Skipping location update.")
 
-    # Convert the modified EXIF data back to binary
-    exif_bytes = piexif.dump(exif_dict)
+    # # Convert the modified EXIF data back to binary and save the image
+    # exif_bytes = piexif.dump(exif_dict)
+    # img.save(destinationfilepath, exif=exif_bytes)
 
-    # Save the image with the updated EXIF data
-    img.save(destinationfilepath, exif=exif_bytes)
-
-    if isinstance(selecteddate, str):
-        new_datetime = datetime.datetime.strptime(selecteddate, "%Y:%m:%d %H:%M:%S")
-    else:
-        new_datetime = selecteddate
+    # if isinstance(selected_date, str):
+    #     new_datetime = datetime.datetime.strptime(selected_date, "%Y:%m:%d %H:%M:%S")
+    # else:
+    #     new_datetime = selected_date
     
-    timestamp = new_datetime.timestamp()
+    # timestamp = new_datetime.timestamp()
 
-    # Update file system times
-    os.utime(destinationfilepath, (timestamp, timestamp))
+    # # Update file system times
+    # os.utime(destinationfilepath, (timestamp, timestamp))
+
+
+# def override_video_data(destinationfilepath, selected_date, selected_location):
 
 
 def process_action(action, curr_file_path, curr_file_name, date_date_filename,date_time_filename,date_creation_date,date_modified_date,date_metadata,date_EXIF,date_dateAcquired,date_json):
     # Select Date
-    print("Action process...")
-    print("Curr File Name: " + curr_file_name)
-    print("Curr File Path: " + curr_file_path)
-    print("Curr JSON Data: ",  date_json)
-
-
-    selecteddate = 0
-    selectedlocation = None
-    selectedjsonpath = None
-
-    print("Entered Value: " , action, type(action))
-    # print(type(action))
-    action = str(action)
-    if action == "9" or action == "8": 
-        selectedlocation = date_json["locations"]
-        selectedjsonpath = date_json["file_path"]
-        if action == "8": 
-            print("8selected - creation time")
-            selecteddate = date_json["dates_times"][0][1]
-        elif action == "9": 
-            print("9 selected - phototaken time")
-            selecteddate = date_json["dates_times"][1][1]
 
     print("-------")
-    print("Selected date: " , selecteddate)
-    print("Selected location: " , selectedlocation)
-    print("Selected jsonpath: " , selectedjsonpath)
+    print("\nFile Processing Action started... Using value: ", action, type(action))
+
+
+    selected_date = 0
+    selected_time = 0
+    selected_location = None
+    selected_json_path = None
+
+    # print("Curr File Name: " + curr_file_name)
+    print("Curr File Path: " + curr_file_path)
+    print("Curr JSON Data: ",  date_json)
+    print("-------")
+    action = str(action)
+
+    if action == "1": #Date from file name
+        selected_date = date_date_filename
+        selected_time = date_time_filename
+    elif action == "2":
+        selected_date = date_creation_date
+    elif action == "3":
+        selected_date = date_modified_date
+    elif action == "4":
+        selected_date = date_metadata
+    elif action == "5":
+        selected_date = date_EXIF
+    elif action == "6":
+        selected_date = date_dateAcquired
+    elif action == "9" or action == "8": 
+        selected_location = date_json["locations"]
+        selected_json_path = date_json["file_path"]
+        if action == "8": 
+            print("8 selected - creation time")
+            selected_date = date_json["dates_times"][0][1]
+        elif action == "9": 
+            print("9 selected - phototaken time")
+            selected_date = date_json["dates_times"][1][1]
+
+    print("Selected date: " , selected_date)
+    print("Selected location: " , selected_location)
+    print("Selected jsonpath: " , selected_json_path)
+    print("-------")
     
-    
-    newDateStr = str(selecteddate).replace(" ", "_").replace(":", "-")
+    newDateStr = str(selected_date).replace(" ", "_").replace(":", "-").replace(".", "-")
     newLocStr = ""
-    if selectedlocation is not None and selectedlocation: 
-        print("Location has data")
-        newLocStr = str(selectedlocation) + "_"
+    if selected_location is not None and selected_location: 
+        print("\033[92m", "!!!!! LOCATION HAS DATA !!!!")
+        print("LA: ", str(selected_location[0]["latitude"]) )
+        print("LO: ", str(selected_location[0]["longitude"]) )
+        print("AL: ", str(selected_location[0]["altitude"]))
+
+        newLocStr += "_LA-" +str(selected_location[0]["latitude"]) 
+        newLocStr += "_LO-" +str(selected_location[0]["longitude"]) 
+        newLocStr += "_AL-" +str(selected_location[0]["altitude"]) + "_"
+        print(newLocStr, "\033[0m")
     else: 
         print("Location has no data")
     
+    print("-------")
     newFileName = f"{str(newDateStr)}_{newLocStr}{curr_file_name}"
     newJSONName = f"{str(newDateStr)}_{newLocStr}{curr_file_name}.json"
 
     print("Renamed File Name: " + newFileName)
     print("Renamed JSON Name: " + newJSONName)
-
+    print("-------")
     destinationjsonpath =  PROCESSED_PATH + "\\" + newJSONName
     destinationfilepath =  PROCESSED_PATH + "\\" + newFileName
     print("Dest File Path: " + destinationfilepath)
     print("Dest JSON path: " + destinationjsonpath)
-
-    # input(" Proceed to copying files? \n>>> ")
-    
-    # if not os.path.exists(PROCESSED_PATH):
-    #     os.makedirs(PROCESSED_PATH)
-    #     print(f"Folder created: {PROCESSED_PATH}")
+    print("-------")
 
 
     print("Copy files: ")
     copy_and_check(curr_file_path, destinationfilepath)
-    copy_and_check(selectedjsonpath, destinationjsonpath)
+    copy_and_check(selected_json_path, destinationjsonpath)
     print ("-----")
 
-    # input(" Proceed to override data? \n >>> ")
-    override_data(destinationfilepath, selecteddate, selectedlocation)
+    if selected_location is not None and selected_location: 
+        input(" Proceed to override data? \n >>> ")
 
+    print("Overriding data: ")
+
+    image_extensions = {'.jpeg', '.jpg', '.bmp', '.png', '.cr2'}
+    video_extensions = {'.mov', '.mp4', '.avi', '.mkv'}
+    
+    _, ext = os.path.splitext(curr_file_name)
+    if ext in image_extensions: 
+        override_image_data(destinationfilepath, selected_date, selected_location)
+    if ext in video_extensions: 
+        override_video_data(destinationfilepath, selected_date, selected_location)
+    print("-------")
     print("Override complete, moving to next file!")
     return
 
@@ -465,66 +382,27 @@ def partial_match(curr_file_name, dest_path):
     return False
 
 
-def process_files(source_path):
-    #Processing
-
-    if not os.path.exists(PROCESSED_PATH):
-        os.makedirs(PROCESSED_PATH)
-        print(f"Folder created: {PROCESSED_PATH}")
-    counter = 1
-    for file_name in os.listdir(source_path): 
-        file_path = os.path.join(source_path, file_name)
-
-
-        if os.path.isfile(file_path) and file_name.endswith(FILE_TYPE):
-            print()
-            
-            print("\033[92m" + "[" + str(counter) + "] Name: " + file_name)
-            print("--------------------\033[0m")
-            counter += 1
-
-            partial_check = partial_match(file_name, PROCESSED_PATH)
-
-            if partial_check: 
-                user_input = input("\033[94mPartial match detected in Processed directory. Please check. \nENTER = skip this file | p = process file\n>>> \033[0m").strip().lower()
-                if user_input == "p":
-                    print(f"Processing file: {file_name}")
-                    pass
-                else:
-                    print(f"Skipping file: {file_name}")
-                    continue
-
-
-
-            # print("--------------------\033[0m")
-
-
-            menu_system(file_path, file_name, source_path)
-            # date_date_filename, date_time_filename,                date_creation_date, date_modified_date, date_metadata,                 date_EXIF, date_dateAcquired, date_json, noneStr
-
-            
-
 def menu_system(file_path, file_name, source_path):
     while True:
-
-                #continue processing
+        
+        # Extract date from various places, print processing stuff
         print("--------------------")
         noneStr = '\033[91mNone\033[0m'
-        date_date_filename = get_date_from_filename(file_name)
-        date_time_filename = get_time_from_filename(file_name)
-        date_creation_date = get_date_from_creation_date(file_path)
-        date_modified_date = get_date_from_modified_date(file_path)
-        date_metadata = get_date_from_metadata(file_path)
-        date_EXIF = get_date_from_EXIF(file_path)
-        date_dateAcquired = get_date_from_dateAcquired(file_path)
-        date_json = get_date_from_JSON(source_path, file_name)
-        # print(date_json)
-        # print("----")
-
+        date_date_filename = drf.get_date_from_filename(file_name)
+        date_time_filename = drf.get_time_from_filename(file_name)
+        date_creation_date = drf.get_date_from_creation_date(file_path)
+        date_modified_date = drf.get_date_from_modified_date(file_path)
+        date_metadata = drf.get_date_from_metadata(file_path)
+        date_EXIF = drf.get_date_from_EXIF(file_path)
+        date_dateAcquired = drf.get_date_from_dateAcquired(file_path)
+        date_json = drf.get_date_from_JSON(source_path, file_name)
         print("--------------------\033[0m")
+
+        
+        #Print Menu
         noneStr = '\033[91mNone\033[0m'
-        print(f"1-DateName      : {date_date_filename or noneStr}")
-        print(f"1-TimeName      : {date_time_filename or noneStr}")
+        print(f"1-DateFileName  : {date_date_filename or noneStr}")
+        print(f"1-TimeFileName  : {date_time_filename or noneStr}")
         print(f"2-CREATION      : {date_creation_date or noneStr}")
         print(f"3-MODIFIED      : {date_modified_date or noneStr}")
         print(f"4-METADATA      : {date_metadata or noneStr}")
@@ -534,10 +412,22 @@ def menu_system(file_path, file_name, source_path):
         if date_json:
             print(print_readable_format(date_json))
 
+
+
+        # Validate the input
+        if date_json:
+            action = '9'
+            print("\033[94m >>> AUTO", action, "\033[0m")
+            process_action(int(action), file_path, file_name, 
+                            date_date_filename, date_time_filename,
+                            date_creation_date, date_modified_date,
+                            date_metadata, date_EXIF, 
+                            date_dateAcquired, date_json)
+            break
+
         # Prompt for input and handle accidental or invalid entries
         action = input("\033[94m>>> Enter 1-9 to select override date, 'r' to refresh, or 'x' to exit\n>>> \033[0m").strip().lower()
 
-        # Validate the input
         if action in ['1', '2', '3', '4', '5', '6', '8', '9', 'x', 'r']:
             if action == 'x':
                 print("Exiting...")
@@ -558,19 +448,39 @@ def menu_system(file_path, file_name, source_path):
             print("\033[91mInvalid input! Please enter a number between 1-9 or 'x' to exit.\033[0m")
 
 def main(): 
-    check_constants()
-    # walk_directory(str(SOURCE_PATH), 1,1)
 
-    process_files(str(SOURCE_PATH))
+    #Create Processed folder if does not exist
+    if not os.path.exists(PROCESSED_PATH):
+        os.makedirs(PROCESSED_PATH)
+        print(f"Folder created: {PROCESSED_PATH}")
 
-    
-
-
-
-
-
+    #Process all files in SOURCE_PATH
+    counter = 1
+    files = sorted(os.listdir(SOURCE_PATH))  # Sorts files by name in ascending order
 
 
+    for file_name in files: 
+        file_path = os.path.join(SOURCE_PATH, file_name)
+
+        # If its a file with programmed FILE_TYPE --> attempt to process
+        if os.path.isfile(file_path) and file_name.endswith(FILE_TYPE):
+            
+            #Print header            
+            print("\n\033[92m" + "[" + str(counter) + "] Name: " + file_name)
+            print("--------------------\033[0m")
+            counter += 1
+
+            #Check if theres a partially procesed/matched file in processed path. If true, prompt the partial process flow, else show the menu
+            # partial_check = partial_match(file_name, PROCESSED_PATH)
+            # if partial_check: 
+            #     user_input = input("\033[94mPartial match detected in Processed directory. Please check. \nENTER = skip this file | p = process file\n>>> \033[0m").strip().lower()
+            #     if user_input == "p":
+            #         print(f"Processing file: {file_name}")
+            #         pass
+            #     else:
+            #         print(f"Skipping file: {file_name}")
+            #         continue
+            menu_system(file_path, file_name, SOURCE_PATH)
 
 
 if __name__ == "__main__": 
