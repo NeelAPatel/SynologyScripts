@@ -15,30 +15,65 @@ import ffmpeg
 import piexif
 import struct
 from PIL import Image
+import subprocess
+from PIL import ImageFile
+
+
 # CONSTANTS
 
-FILE_TYPE = ".JPG".lower()
-SOURCE_PATH = str(r"E:\GPhotos-Metadatafixer\2024-10-01-173418557\AAATotal\Error" + FILE_TYPE.replace('.', "")) # + "\\bleh"
+#FILE_TYPE = ".mp4".lower()
+FILE_TYPE = [".jpg", ".png", ".jpeg", ".mp4", ".gif", ".dng", ".webp", ".mov" ]
+
+#F:\GPhotos Takeout - AP - Dec 30\Google Photos\Photos from 2024
+SOURCE1 = str(r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING")
+#SOURCE2 = str(r"\2020 Graduation - HSS")
+#SOURCE2 = str(r"\Archive")
+#SOURCE2 = str(r"\Arunima_s Sweet at Brio")
+SOURCE2 = str(r"\ASHP Midyear 23 - Anaheim, CA")
+#SOURCE2 = str(r"\Baby Shower")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+#SOURCE2 = str(r"\BU")
+
+
+
+
+
+SOURCE_PATH = SOURCE1 + SOURCE2
+#SOURCE_PATH = str(r"E:\GPhotos-Metadatafixer\2024-10-01-173418557\AAATotal\Error" + FILE_TYPE.replace('.', "") + "\\ProblemFiles") # + "\\bleh" + "\\testing"
+#SOURCE_PATH = str(r"F:\GPhotos Takeout - AP - Dec 30\Google Photos\Photos from 2024") # + "\\bleh" + "\\testing"
 # "E:\GPhotos-Metadatafixer\2024-10-01-173418557\AAATotal\ErrorJPG\Problem Files Still Need to Process\IMG-20161107-WA0008.jpg"
 
-PROCESSED_PATH = SOURCE_PATH + "\\Processed2"
+PROCESSED_PATH = SOURCE_PATH + "\\Processed"
 SKIPPED_PATH = SOURCE_PATH + "\\Skipped"
 
 
-def walk_directory(dir_to_walk, printflag, countflag): 
-    print("Walking directory...")
-    files = []
-    for file_name in os.listdir(dir_to_walk):
-        # print(file_name)
-        file_path = os.path.join(dir_to_walk, file_name) 
-        if os.path.isfile(file_path): 
-            files.append((file_path, file_name))
+# def walk_directory(dir_to_walk, printflag, countflag): 
+#     print("Walking directory...")
+#     files = []
+#     for file_name in os.listdir(dir_to_walk):
+#         # print(file_name)
+#         file_path = os.path.join(dir_to_walk, file_name) 
+#         if os.path.isfile(file_path): 
+#             files.append((file_path, file_name))
 
-            if printflag: 
-                print(file_name)
+#             if printflag: 
+#                 print(file_name)
 
-    if countflag: 
-        print(len(files))
+#     if countflag: 
+#         print(len(files))
 
 
 def print_readable_format(data):
@@ -105,27 +140,135 @@ def copy_and_check(source, destination):
     else:
         print("Error: File was not copied.")
 
-def override_video_data(destinationfilepath, selected_date, selected_location):
+def update_location_with_ffmpeg(input_file_path, output_file_path, exif_date_str, new_lat, new_lon):
+
+    try:
+        # Convert the latitude and longitude into the correct format
+        location_tag = f"+{new_lat:.4f}{new_lon:.4f}/"
+        # # Extract the directory and the filename
+        # directory, filename = os.path.split(output_file_path)
+        # # Prepend 'FFMPEG_' to the filename
+        # new_filename = "FFMPEG_" + filename
+        # # Combine the directory and the new filename
+        # output_file_path = os.path.join(directory, new_filename)
+
+
+        # Update metadata with the new location using ffmpeg
+        ffmpeg.input(input_file_path).output(
+            output_file_path,
+            **{
+                'metadata': f'creation_time={exif_date_str}',
+                'metadata:s:v': f'location={location_tag}'  # Embedding location metadata
+            },
+            vcodec='copy',  # Copy the video stream without re-encoding
+            acodec='copy'   # Copy the audio stream without re-encoding
+        ).global_args('-hide_banner',  '-loglevel', 'info').run(overwrite_output=True)
+        # , 'quiet', '-loglevel'
+        
+        print(f"File saved with updated ffmpeg location to: {output_file_path}")
+    except ffmpeg.Error as e:
+        print(f"\033[91mFFmpeg error: {e}\033[0m")
+
+def update_location_with_exiftool(input_file_path, output_file_path, exif_date_str,  new_lat, new_lon, new_alt=None):
+    try:
+        # Construct the exiftool command to insert GPS metadata
+        print("\nEXIF TOOL OVERRIDE")
+        print(new_lat, type(new_lat))
+        print(new_lon, type(new_lon))
+        lat_ref = "N" if new_lat >= 0 else "S"
+        lon_ref = "E" if new_lon >= 0 else "W"
+        command = [
+            'exiftool',
+            f'-GPSLatitude={new_lat}',
+            f'-GPSLongitude={new_lon}',
+            f'-GPSLatitudeRef={lat_ref}',
+            f'-GPSLongitudeRef={lon_ref}',
+        ]
+        
+        # If altitude is provided, add it to the exiftool command
+        if new_alt is not None:
+            command.append(f'-GPSAltitude={new_alt}')
+        
+
+        print("date stuff")
+        # Extract the directory and the filename
+        directory, filename = os.path.split(output_file_path)
+        # Prepend 'FFMPEG_' to the filename
+        new_filename = "EXIFTOOL_" + filename
+        # Combine the directory and the new filename
+        output_file_path = os.path.join(directory, new_filename)
+
+        print(output_file_path)
+
+        print("command append thing")
+        # Append the file path to the command
+        command.append(output_file_path)
+
+        print(command) 
+        print("subprecess thing")
+        # Run the exiftool command  
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        print("result_code", result, result.returncode)
+        # Check the result of the exiftool command
+        if result.returncode == 0:
+            print(f"File saved with updated exiftool location to: {output_file_path}")
+        else:
+            # '\033[91mNone\033[0m'
+            print(f"\033[91mExiftool error: {result.stderr}\033[0m")
+    except Exception as e:
+        print(f"Exiftool error: {e}")
+
+
+def override_video_data(curr_file_path, destinationfilepath, selected_date, selected_location):
     # Convert the selected date to the appropriate format for video metadata
     exif_date_str = selected_date.strftime("%Y-%m-%dT%H:%M:%S")  # ffmpeg uses this format for metadata
-    # Update EXIF date values (This would be ffmpeg metadata for video)
-    # Here, we pass the `exif_date_str` as metadata
-    # For video, we use the 'creation_time' metadata tag to update the date
-    # Note: Video doesn't have multiple EXIF date fields, just one creation date field
-    try:
-        # Prepare ffmpeg command to update the video metadata
-        ffmpeg.input(destinationfilepath).output(destinationfilepath,
-            **{
-                'metadata': f'creation_time={exif_date_str}',  # Set video creation time
-            }
-        ).run()
+
+    print("DEBUG CHECK")
+    print(selected_location)
+    print(selected_location is None)
+
+
+    if selected_location: 
+        # GPS Data exists
+        # Extract latitude and longitude from the selected location
+        new_lat = selected_location[0]["latitude"]
+        new_lon = selected_location[0]["longitude"]
+
+        try:
+            print("3")
+            # Using ffmpeg-python to extract metadata
+            probe = ffmpeg.probe(curr_file_path)
+            format_info = probe.get('format', {})
+            tags = format_info.get('tags', {})
+            location = tags.get('location', None)
+            
+        except Exception as e:
+            # print(f"FFmpeg error: {e}")
+            return None
+
+        print(location)
+
+        update_location_with_ffmpeg(curr_file_path, destinationfilepath,exif_date_str,  new_lat, new_lon)
+
+    else: 
+        # No GPS data, only do dates
+
+        print(">>>>>>>>> DEBUG <<<<<<<<<<<<<")
+        print("FFmpeg module:", ffmpeg)
+        print("Current file path:", curr_file_path)
+        print("Destination file path:", destinationfilepath)
+        print(">>>>>>>>> DEBUG <<<<<<<<<<<<<")
+
+        ffmpeg.input(curr_file_path).output(destinationfilepath,
+        **{
+            'metadata': f'creation_time={exif_date_str}',  # Set video creation time
+        }
+        ).global_args('-hide_banner', '-loglevel', 'info').run()
 
         print(f"\033[92mVideo metadata updated for {destinationfilepath}\033[0m")
-    except Exception as e:
-        print(f"\033[91mFailed to update video metadata: {e}\033[0m")
+        
+    
 
-
-    # Update file system times
     if isinstance(selected_date, str):
         new_datetime = datetime.datetime.strptime(selected_date, "%Y:%m:%d %H:%M:%S")
     else:
@@ -135,8 +278,6 @@ def override_video_data(destinationfilepath, selected_date, selected_location):
 
     # Update file system access and modification times
     os.utime(destinationfilepath, (timestamp, timestamp))
-
-
 
 
 def convert_degrees_to_rational(deg):
@@ -155,6 +296,7 @@ def convert_rational_to_degrees(rational):
 
 def override_image_data(destinationfilepath, selected_date, selected_location): 
     # Open the image and load existing EXIF data
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
     img = Image.open(destinationfilepath)
 
 
@@ -336,12 +478,6 @@ def override_image_data(destinationfilepath, selected_date, selected_location):
             print(f"\033[91mERROR: EXIF dump failed after corrections! {e}\033[0m")
             raise  # Let the error propagate and crash if it fails again
     
-
-
-
-# def override_video_data(destinationfilepath, selected_date, selected_location):
-
-
 def process_action(action, curr_file_path, curr_file_name, date_date_filename,date_time_filename,date_creation_date,date_modified_date,date_metadata,date_EXIF,date_dateAcquired,date_json):
     # Select Date
 
@@ -410,53 +546,40 @@ def process_action(action, curr_file_path, curr_file_name, date_date_filename,da
     print("Renamed File Name: " + newFileName)
     print("Renamed JSON Name: " + newJSONName)
     print("-------")
-    destinationjsonpath =  PROCESSED_PATH + "\\" + newJSONName
-    destinationfilepath =  PROCESSED_PATH + "\\" + newFileName
+
+    _, new_ext = os.path.splitext(newFileName)
+    newprocessedpath = PROCESSED_PATH + "_" + new_ext.replace(".", "")
+    destinationjsonpath =  newprocessedpath + "\\" + newJSONName
+    destinationfilepath =  newprocessedpath + "\\" + newFileName
+
     print("Dest File Path: " + destinationfilepath)
     print("Dest JSON path: " + destinationjsonpath)
     print("-------")
 
 
-    print("Copy files: ")
-    copy_and_check(curr_file_path, destinationfilepath)
-    copy_and_check(selected_json_path, destinationjsonpath)
-    print ("-----")
-
-    # if selected_location is not None and selected_location: 
-    #     input(" Proceed to override data? \n >>> ")
-
-    print("Overriding data: ")
-
     image_extensions = {'.jpeg', '.jpg', '.bmp', '.png', '.cr2'}
     video_extensions = {'.mov', '.mp4', '.avi', '.mkv'}
     
     _, ext = os.path.splitext(curr_file_name)
-    if ext in image_extensions: 
+    if ext.lower() in image_extensions: 
+        print("Copy files: ")
+        copy_and_check(curr_file_path, destinationfilepath)
+        copy_and_check(selected_json_path, destinationjsonpath)
+        print ("-----")
+
+        # if selected_location is not None and selected_location: 
+        #     input(" Proceed to override data? \n >>> ")
+
+        print("Overriding data: ")
+
         override_image_data(destinationfilepath, selected_date, selected_location)
     if ext in video_extensions: 
-        override_video_data(destinationfilepath, selected_date, selected_location)
+        print("Copy files: ")
+        copy_and_check(selected_json_path, destinationjsonpath)
+        override_video_data(curr_file_path, destinationfilepath, selected_date, selected_location)
     print("-------")
     print("Mmoving to next file!")
     return
-
-
-def partial_match(curr_file_name, dest_path):
-    # Get the base name of the current file without the extension
-    base_name = os.path.splitext(curr_file_name)[0]
-
-    # Iterate through all files in the destination path
-    for file_name in os.listdir(dest_path):
-        # Get the base name of the destination file without the extension
-        dest_base_name = os.path.splitext(file_name)[0]
-
-        # Check if the base name of the current file is a substring of any destination file's base name
-        if base_name in dest_base_name:
-            print(f"Partial match found: {file_name} matches with {curr_file_name}")
-            return True
-
-    # If no match is found, return False
-    print(f"No partial match found for {curr_file_name} in {dest_path}")
-    return False
 
 
 def menu_system(file_path, file_name, source_path):
@@ -472,7 +595,7 @@ def menu_system(file_path, file_name, source_path):
         date_metadata = drf.get_date_from_metadata(file_path)
         date_EXIF = drf.get_date_from_EXIF(file_path)
         date_dateAcquired = drf.get_date_from_dateAcquired(file_path)
-        date_json = drf.get_date_from_JSON(source_path, file_name)
+        date_json = drf.get_date_from_JSON(source_path, source_path, file_name)
         print("--------------------\033[0m")
 
         
@@ -525,12 +648,42 @@ def menu_system(file_path, file_name, source_path):
             # Print an error message for invalid input and re-ask the question
             print("\033[91mInvalid input! Please enter a number between 1-9 or 'x' to exit.\033[0m")
 
+def partial_match(curr_file_name, dest_path):
+    # Get the base name of the current file without the extension
+    base_name = os.path.splitext(curr_file_name)[0]
+
+    # Iterate through all files in the destination path
+    for file_name in os.listdir(dest_path):
+        # Get the base name of the destination file without the extension
+        dest_base_name = os.path.splitext(file_name)[0]
+
+        # Check if the base name of the current file is a substring of any destination file's base name
+        if base_name in dest_base_name:
+            print(f"Partial match found: {file_name} matches with {curr_file_name}")
+            return True
+
+    # If no match is found, return False
+    print(f"No partial match found for {curr_file_name} in {dest_path}")
+    return False
+
+
 def main(): 
 
     #Create Processed folder if does not exist
-    if not os.path.exists(PROCESSED_PATH):
-        os.makedirs(PROCESSED_PATH)
-        print(f"Folder created: {PROCESSED_PATH}")
+
+    for filetype in FILE_TYPE: 
+        newpath = PROCESSED_PATH + "_" + filetype.replace(".", "")
+        if not os.path.exists(newpath):
+            os.makedirs(newpath)
+            print(f"Folder created: {newpath}")
+        else: 
+            print(">>>>>>>>>>>>>>>>>")
+            print(">>>>>>>>>>>>>>>>>")
+            print("ERROR EXISTING FOLDERS")
+            print(">>>>>>>>>>>>>>>>>")
+            print(">>>>>>>>>>>>>>>>>")
+            exit(1)
+
 
     #Process all files in SOURCE_PATH
     counter = 1
@@ -541,7 +694,7 @@ def main():
         file_path = os.path.join(SOURCE_PATH, file_name)
 
         # If its a file with programmed FILE_TYPE --> attempt to process
-        if os.path.isfile(file_path) and file_name.endswith(FILE_TYPE):
+        if os.path.isfile(file_path) and any(file_name.lower().endswith(ext) for ext in FILE_TYPE):
             
             #Print header            
             print("\n\033[92m" + "[" + str(counter) + "] Name: " + file_name)

@@ -144,7 +144,7 @@ def get_date_from_dateAcquired(filepath):
         # print(f"    > Date acquired not found for: {filepath}")
         return None
 
-def get_date_from_JSON(source_path, file_name):
+def get_date_from_JSON(source_path, possible_json_path, file_name):
 
     # Normalize the file name to handle variations
     base_name, ext = os.path.splitext(file_name)
@@ -157,8 +157,9 @@ def get_date_from_JSON(source_path, file_name):
     # Full path for the file in the current directory
     currdir_json_path = os.path.join(source_path, json_file_name)
 
-    gphotos_json_path = "F:\\GPhotos\\Takeout\\Google Photos"
-
+    #gphotos_json_path = "F:\\GPhotos\\Takeout\\Google Photos"
+    gphotos_json_path = possible_json_path
+    
     fileFoundFlag = 0
     for root, dirs, files in os.walk(gphotos_json_path):
         for file in files:
