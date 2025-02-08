@@ -1,0 +1,69 @@
+// SankeyMATIC diagram inputs - Saved: 10/4/2024, 1:55:55 PM
+// https://sankeymatic.com/build/
+
+// === Nodes and Flows ===
+
+TotalPhotos [32915] Merged Photos
+TotalPhotos [25070] Google Photos
+
+Google Photos [1000] Part1
+Google Photos [2000] Part2
+Google Photos [3000] Part3
+Google Photos [4000] Part4
+Google Photos [5000] Part5
+Google Photos [5000] Part6
+Google Photos [5000] Part7
+
+// === Settings ===
+
+size w 700
+  h 600
+margin l 12
+  r 12
+  t 18
+  b 20
+bg color #ffffff
+  transparent N
+node w 8
+  h 60
+  spacing 55
+  border 0
+  theme a
+  color #888888
+  opacity 1
+flow curvature 0.5
+  inheritfrom target
+  color #999999
+  opacity 0.45
+layout order automatic
+  justifyorigins N
+  justifyends N
+  reversegraph N
+  attachincompletesto nearest
+labels color #000000
+  hide N
+  highlight 0.55
+  fontface monospace
+  linespacing 0.2
+  relativesize 120
+  magnify 95
+labelname appears Y
+  size 17
+  weight 400
+labelvalue appears Y
+  fullprecision Y
+  position above
+  weight 400
+labelposition autoalign 1
+  scheme auto
+  first before
+  breakpoint 4
+value format ',.'
+  prefix ''
+  suffix ''
+themeoffset a 6
+  b 3
+  c 0
+  d 0
+meta mentionsankeymatic Y
+  listimbalances Y
