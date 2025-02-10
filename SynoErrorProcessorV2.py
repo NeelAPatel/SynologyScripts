@@ -21,7 +21,7 @@
 
 from collections import defaultdict
 from SynoProcessResults import ProcessingResult
-from string_format_wrap import swrap 
+from string_format_wrap import swrap, pwrap, swrap_test
 import json 
 import os
 # Global Vars
@@ -41,24 +41,48 @@ LIST_SOURCE_PATH_FOLDERS = [
 ]
 
 
-results = None
-curr_source_path = None
-curr_source_path_album_folder = ""
-curr_file_type = ""
+_results = None
+_curr_source_path = None
+_curr_file_type = None
+_curr_processed_path = None
 
-processed_path = curr_source_path_album_folder + "\\Processed"
-skipped_path = curr_source_path_album_folder + "\\Skipped"
+# processed_path = curr_source_path + "\\Processed"
+# skipped_path = curr_source_path + "\\Skipped"
 
-
+def create_processed_folder_ifnotexists(file: str):
+    # Global values to edit in this function scope
+    #global _results
+    #global _curr_source_path
+    global _curr_processed_path
+    global _curr_file_type
+    
+    # Set up processed folder path
+    _curr_file_type = os.path.splitext(file)[-1].lower().replace(".", "")  # Extract file extension
+    _curr_processed_path = _curr_source_path + "\\Processed" + "_" + _curr_file_type.replace(".", "")
+    
+    #If doesn't exist, create one. 
+    if not os.path.exists(_curr_processed_path):
+        os.makedirs(_curr_processed_path)
+        pwrap("m",f"Folder created: {_curr_processed_path}")
 
 def processing_media(): 
+    # Global values to edit in this function scope
+    global _results
+    global _curr_source_path
+    #global _curr_processed_path
+    #global _curr_file_type
     # For each folder
-    #for source_path in LIST_SOURCE_PATH_FOLDERS: 
+    for source_path in LIST_SOURCE_PATH_FOLDERS: 
+        #Global set
+        _curr_source_path = source_path
+        
         
         #For each file
-        #for root, _, files in os.walk(source_path): 
-            
-            #Create Processed_Filetype if does not exist
+        for root, _, files in os.walk(source_path): 
+            for file in files:
+                
+                create_processed_folder_ifnotexists(file)
+            # Create Processed_Filetype if does not exist
             
             # Retrieve current date values
             # retrieve json value
@@ -97,20 +121,23 @@ def scan_all_sources():
         print(f"Total count: {total_media_count} -- Type breakdown:", dict(media_type_aggr))
         
         # Add findings to tracker
-        results.add_folder_to_tracking(source_path, total_media_count, media_type_aggr)
+        _results.add_folder_to_tracking(source_path, total_media_count, media_type_aggr)
     print("-------- SCANNING FINISHED FOR SOURCE PATHS -------------")
     
     
 def main(): 
+    # Global values to edit in this function scope
+    global _results
+    #global _curr_source_path
+    #global _curr_processed_path
+    #global _curr_file_type
     # Pre execution setup
+    
+    swrap_test()
+    
     print(swrap("bold", swrap("blubg", "Synology Photos Metadata Corrector")))
     print("--------------SETUP---------------")
-    global results
-    global curr_source_path
-    global curr_source_path_album_folder
-    global curr_file_type
-    global processed_path
-    global skipped_path
+
     
     
     
@@ -121,10 +148,10 @@ def main():
         print(swrap("g", folderPath))
     
     
-    results = ProcessingResult()
-    print(results)
-    results.set_total_paths(LIST_SOURCE_PATH_FOLDERS)
-    results.set_total_file_types(LIST_FILE_TYPE)
+    _results = ProcessingResult()
+    print(_results)
+    _results.set_total_paths(LIST_SOURCE_PATH_FOLDERS)
+    _results.set_total_file_types(LIST_FILE_TYPE)
     print("--------------SETUP END ---------------\n")
     
     
