@@ -79,3 +79,32 @@ Args:
             return "\033[4m" + my_str + "\033[0m"
         case _:
             raise ValueError(f"Invalid color or style: {color}. Please choose from the supported options.")
+
+def pwrap(color: str, my_str: str) -> None: 
+    print(swrap(color=color, my_str=my_str))
+    
+
+def swrap_test():
+    
+    print(swrap("k", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))    
+    print(swrap("r", "[ERROR] The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))    
+    print(swrap("g", "[GOOD] The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("y", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("b", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("m", "[SYSTEM MESSAGE] The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("c", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("w", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("blkbg", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("rbg", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("gbg", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("ybg", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("blubg", "[PROGRAM HEADERS] The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("mbg", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("cbg", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("wbg", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("rst", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("bold", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("dim", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("italic", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+    print(swrap("under", "The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
+
