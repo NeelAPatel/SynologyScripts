@@ -57,7 +57,7 @@ def create_processed_folder_ifnotexists(file: str):
     global _curr_file_type
     
     # Set up processed folder path
-    _curr_file_type = os.path.splitext(file)[-1].lower().replace(".", "")  # Extract file extension
+    _curr_file_type = os.path.splitext(file)[-1].lower()  # Extract file extension
     _curr_processed_path = _curr_source_path + "\\Processed" + "_" + _curr_file_type.replace(".", "")
     
     #If doesn't exist, create one. 
@@ -91,6 +91,10 @@ def processing_media():
                 #when processing complete --> move into //Processed_originals
             # else
                 # let file be and move on
+    
+    print(_curr_processed_path)
+    print(_curr_file_type)
+    print(_curr_source_path)
     return
 
 def scan_all_sources(): 
