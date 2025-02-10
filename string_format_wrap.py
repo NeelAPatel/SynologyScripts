@@ -18,7 +18,7 @@ Args:
     str: The input string wrapped in the appropriate ANSI escape codes to achieve the desired color/style.
     """
     match color:
-        case "b" | "black": 
+        case "k" | "blk" | "black": 
             return "\033[30m" + my_str + "\033[0m"
 
         case "r" | "red": 
