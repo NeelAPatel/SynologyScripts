@@ -20,7 +20,7 @@
 
 
 from collections import defaultdict
-from SynoProcessResults import ProcessingResult
+from SynoProcessLogger import ProcessLogger
 from string_format_wrap import swrap, pwrap, swrap_test
 import json 
 import os
@@ -45,11 +45,58 @@ _results = None
 _curr_source_path = None
 _curr_file_type = None
 _curr_processed_path = None
-
 # processed_path = curr_source_path + "\\Processed"
 # skipped_path = curr_source_path + "\\Skipped"
 
-def create_processed_folder_ifnotexists(file: str):
+
+def show_menu_for_current_file(file_name: str, index: int, total_index): 
+    global _results
+    #global _curr_source_path
+    #global _curr_processed_path
+    #global _curr_file_type
+    # _results.set_current_file_being_processed(file
+    
+    # total_mediacount = _results.get_total_mediacount_of_process()
+    total_mediacount_of_album = _results.get_total_mediacount_of_currAlbum()
+    total_mediacount_of_type = _results.get_total_mediacount_of_currType()
+    file_ext = os.path.splitext(file_name)[-1].lower()
+    
+    strtotaltypecount = ""
+    for _ in range(len(str(total_mediacount_of_type)) - len(str(index))): 
+        strtotaltypecount+= "0"
+    strtotaltypecount += str(index)
+    
+    strtotalalbumcount = "" 
+    for _ in range(len(str(total_mediacount_of_album)) - len(str(total_index))): 
+        strtotalalbumcount+= "0"
+    strtotalalbumcount += str(total_index)
+    
+    
+    pwrap("bold", swrap("gbg", f"[{strtotaltypecount}/{total_mediacount_of_type}x {file_ext}s || {strtotalalbumcount}/{total_mediacount_of_album} in album] | {file_name}" ))
+    #Counter = 001/100 xJPGs | File Name 
+    '''
+    
+    
+    ------- PROCESSING STARTED --------------
+    0001/1000 x jpgs | File Name
+    ----------------------------
+    Media Path: --
+    1
+    2
+    3
+    ...
+    9
+    ---------
+    Enter 1-9 to select override value
+    r to refresh
+    x to exit
+    ---------------------
+    
+    '''
+    #Show File Name and counter
+    action = input("everything looks good? ")
+
+def create_processed_folder_ifnotexists(file_name: str):
     # Global values to edit in this function scope
     #global _results
     #global _curr_source_path
@@ -57,7 +104,7 @@ def create_processed_folder_ifnotexists(file: str):
     global _curr_file_type
     
     # Set up processed folder path
-    _curr_file_type = os.path.splitext(file)[-1].lower()  # Extract file extension
+    _curr_file_type = os.path.splitext(file_name)[-1].lower()  # Extract file extension
     _curr_processed_path = _curr_source_path + "\\Processed" + "_" + _curr_file_type.replace(".", "")
     
     #If doesn't exist, create one. 
@@ -71,36 +118,63 @@ def processing_media():
     global _curr_source_path
     #global _curr_processed_path
     #global _curr_file_type
+    
+    #
     # For each folder
+    pwrap("m", "------- PROCESSING STARTED --------------")
     for source_path in LIST_SOURCE_PATH_FOLDERS: 
         #Global set
         _curr_source_path = source_path
+        total_album_index = 1
         
-        
-        #For each file
         for root, _, files in os.walk(source_path): 
-            for file in files:
-                
-                create_processed_folder_ifnotexists(file)
-            # Create Processed_Filetype if does not exist
+            #For each traversal, 
             
-            # Retrieve current date values
-            # retrieve json value
-            # ask to override 
-            # if overwrite --> process action
-                #when processing complete --> move into //Processed_originals
-            # else
-                # let file be and move on
+            #Sort all the files
+            files = sorted(os.listdir(_curr_source_path))
+            index = 1            
+            for file_name in files:
+                
+                # Create a file_path alongside file_name
+                file_path = os.path.join(_curr_source_path, file_name)
+                # If the file is a valid file we're ready to process, go ahead and show the menu
+                if os.path.isfile(file_path) and any(file_name.lower().endswith(ext) for ext in LIST_FILE_TYPE):
+                    
+                    
+                    #Set current file as its being explored 
+                    _results.set_current_processing_file(file_path)
+                    
+                    #Create processed folder
+                    create_processed_folder_ifnotexists(file_name)
+                    #print(file_name)
+                
+                    action = show_menu_for_current_file(file_path, index, total_album_index)
+                    
+                    index += 1
+                    #if os.path.isfile()
+                    
+                    # Create Processed_Filetype folde rif does not exist
+
+                    
+                    # Retrieve current date values
+                # retrieve json value
+                # ask to override 
+                # if overwrite --> process action
+                    #when processing complete --> move into //Processed_originals
+                # else
+                    # let file be and move on
     
-    print(_curr_processed_path)
-    print(_curr_file_type)
-    print(_curr_source_path)
+    #print(_curr_processed_path)
+    #print(_curr_file_type)
+    #print(_curr_source_path)
     return
 
-def scan_all_sources(): 
+def scan_all_sources(): #
     # print(str(results.get_progress_tracker()))
     
     print("-------- SCANNING SOURCE PATHS -------------")
+    
+    full_total = 0
     for source_path in LIST_SOURCE_PATH_FOLDERS: 
         #Loop through all source folders
         
@@ -125,7 +199,11 @@ def scan_all_sources():
         print(f"Total count: {total_media_count} -- Type breakdown:", dict(media_type_aggr))
         
         # Add findings to tracker
-        _results.add_folder_to_tracking(source_path, total_media_count, media_type_aggr)
+        _results.add_album_to_tracking(source_path, total_media_count, media_type_aggr)
+        full_total += total_media_count
+    
+    
+    _results.set_total_mediacount_process(full_total)
     print("-------- SCANNING FINISHED FOR SOURCE PATHS -------------")
     
     
@@ -152,7 +230,7 @@ def main():
         print(swrap("g", folderPath))
     
     
-    _results = ProcessingResult()
+    _results = ProcessLogger()
     print(_results)
     _results.set_total_paths(LIST_SOURCE_PATH_FOLDERS)
     _results.set_total_file_types(LIST_FILE_TYPE)
