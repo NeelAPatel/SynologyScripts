@@ -21,6 +21,7 @@
 
 from collections import defaultdict
 from SynoProcessLogger import ProcessLogger
+import dateRecallFunctions as drf
 from string_format_wrap import swrap, pwrap, swrap_test
 import json 
 import os
@@ -48,54 +49,100 @@ _curr_processed_path = None
 # processed_path = curr_source_path + "\\Processed"
 # skipped_path = curr_source_path + "\\Skipped"
 
+def parse_json_dategeo_response(data):
 
-def show_menu_for_current_file(file_name: str, index: int, total_index): 
-    global _results
-    #global _curr_source_path
-    #global _curr_processed_path
-    #global _curr_file_type
-    # _results.set_current_file_being_processed(file
-    
-    # total_mediacount = _results.get_total_mediacount_of_process()
-    total_mediacount_of_album = _results.get_total_mediacount_of_currAlbum()
+    if data is None: 
+        return None
+    else:
+
+        # json_name = os.path.basename(data['file_path'])
+        # json_path = data['file_path']
+        # print()
+        # print(f"  JSON name: {json_name}")
+        # print(f"  Dates/Times:")
+        
+        creationTime = data['dates_times'][0][1]
+        photoTakenTime = data['dates_times'][1][1]
+        
+        locationData = []
+        if data['locations']: 
+            for loc in data['locations']: 
+                locDict = {
+                    "latitude": loc['latitude'],
+                    "longitude": loc['longitude'],
+                    "altitude": loc['altitude']
+                }
+                locationData.append(locDict)
+        else:
+            locationData = None
+        # count = 8
+        # for dt in data['dates_times']:
+        #     print(f"    - [{count}] {dt[0]}, {dt[1]}, {type(dt[1])}")
+        #     count += 1
+        
+        # if data['locations']:
+        #     print("Locations:")
+        #     for location in data['locations']:
+        #         print(f"    - Latitude: {location['latitude']}, Longitude: {location['longitude']}, Altitude: {location['altitude']} meters")
+        # else:
+        #     print("  Locations: None")
+
+        return creationTime, photoTakenTime, locationData
+
+def show_menuselection_for_current_file(date_extractors: dict): 
+    myIndex = 1
+    for key in date_extractors: 
+        if (key == "JSON"):
+            
+            if (date_extractors[key] is None): 
+                print(swrap("b", f"[{myIndex}] {key:<15} : "), swrap("r", "None"))    
+                break
+            
+            creationTime, photoTakenTime, locationData = parse_json_dategeo_response(date_extractors[key])
+            print(swrap("b", f"    {key:<22} : "), swrap("g", f"Valid!"))
+            print(swrap("b", f"[7] {"JSON - CREATION TIME":<22} : "), swrap("g", f"{creationTime}"))
+            print(swrap("b", f"[8] {"JSON - PHOTOTAKEN TIME":<22} : "), swrap("g", f"{photoTakenTime}"))
+            print(swrap("b", "  ---------- JSON LOCATION : "), swrap("g",f"{locationData}") if locationData is not None else swrap("r", "None"))
+            
+        else: 
+            strResponse = date_extractors[key]
+            print(swrap("b", f"[{myIndex}] {key:<22} : "), swrap("g", f"{strResponse}") if strResponse is not None else swrap("r", "None"))
+            myIndex += 1
+
+
+def extract_dates_from_file(file_path:str):
+    return {
+        'DateFileName': drf.get_date_from_filename(file_path),
+        'TimeFileName': drf.get_time_from_filename(file_path),
+        'CREATION': drf.get_date_from_creation_date(file_path),
+        'MODIFIED': drf.get_date_from_modified_date(file_path),
+        'METADATA': drf.get_date_from_metadata(file_path),
+        'EXIF': drf.get_date_from_EXIF(file_path),
+        'DATEACQUIRED': drf.get_date_from_dateAcquired(file_path),
+        'JSON': drf.parse_json_for_dategeo_data(file_path)
+    }
+
+
+def pad_counter_header_integer(total_count: int, index: int):
+    strCount = ""
+    for _ in range(len(str(total_count)) - len(str(index))): 
+        strCount+= "0"
+    strCount += str(index)
+    return strCount
+
+def show_header_for_current_file(file_name: str, index: int, total_index): 
+    # Counter Header: shows count of current file type and count of total files to process in the album
     total_mediacount_of_type = _results.get_total_mediacount_of_currType()
+    total_mediacount_of_album = _results.get_total_mediacount_of_currAlbum()
+    strtotaltypecount = pad_counter_header_integer(total_count=total_mediacount_of_type, index=index)
+    strtotalalbumcount = pad_counter_header_integer(total_count=total_mediacount_of_album, index=total_index)
+    
+    # Header for each file
+    # [ 001/100 JPG 001/900 album ] | < file name> 
     file_ext = os.path.splitext(file_name)[-1].lower()
-    
-    strtotaltypecount = ""
-    for _ in range(len(str(total_mediacount_of_type)) - len(str(index))): 
-        strtotaltypecount+= "0"
-    strtotaltypecount += str(index)
-    
-    strtotalalbumcount = "" 
-    for _ in range(len(str(total_mediacount_of_album)) - len(str(total_index))): 
-        strtotalalbumcount+= "0"
-    strtotalalbumcount += str(total_index)
+    pwrap("bold", swrap("gbg", f"[{strtotaltypecount}/{total_mediacount_of_type} {file_ext}s || {strtotalalbumcount}/{total_mediacount_of_album} in album] | {file_name}" ))
     
     
-    pwrap("bold", swrap("gbg", f"[{strtotaltypecount}/{total_mediacount_of_type}x {file_ext}s || {strtotalalbumcount}/{total_mediacount_of_album} in album] | {file_name}" ))
-    #Counter = 001/100 xJPGs | File Name 
-    '''
-    
-    
-    ------- PROCESSING STARTED --------------
-    0001/1000 x jpgs | File Name
-    ----------------------------
-    Media Path: --
-    1
-    2
-    3
-    ...
-    9
-    ---------
-    Enter 1-9 to select override value
-    r to refresh
-    x to exit
-    ---------------------
-    
-    '''
-    #Show File Name and counter
-    action = input("everything looks good? ")
-
 def create_processed_folder_ifnotexists(file_name: str):
     # Global values to edit in this function scope
     #global _results
@@ -112,16 +159,16 @@ def create_processed_folder_ifnotexists(file_name: str):
         os.makedirs(_curr_processed_path)
         pwrap("m",f"Folder created: {_curr_processed_path}")
 
-def processing_media(): 
+
+def process_all_albums(): 
     # Global values to edit in this function scope
     global _results
     global _curr_source_path
     #global _curr_processed_path
     #global _curr_file_type
     
-    #
     # For each folder
-    pwrap("m", "------- PROCESSING STARTED --------------")
+    pwrap("reset", "------- PROCESSING ALBUMS STARTED --------------")
     for source_path in LIST_SOURCE_PATH_FOLDERS: 
         #Global set
         _curr_source_path = source_path
@@ -147,9 +194,14 @@ def processing_media():
                     #Create processed folder
                     create_processed_folder_ifnotexists(file_name)
                     #print(file_name)
-                
-                    action = show_menu_for_current_file(file_path, index, total_album_index)
                     
+                    show_header_for_current_file(file_path, index, total_album_index)
+                    
+                    date_extractions = extract_dates_from_file(file_path)
+                    action = show_menuselection_for_current_file(date_extractions)
+                    
+                    #Show File Name and counter
+                    dummyaction = input("everything looks good? ")
                     index += 1
                     #if os.path.isfile()
                     
@@ -167,11 +219,10 @@ def processing_media():
     #print(_curr_processed_path)
     #print(_curr_file_type)
     #print(_curr_source_path)
+    pwrap("reset", "------- PROCESSING ALBUMS ENDED --------------")
     return
 
-def scan_all_sources(): #
-    # print(str(results.get_progress_tracker()))
-    
+def scan_all_album_sources():
     print("-------- SCANNING SOURCE PATHS -------------")
     
     full_total = 0
@@ -195,7 +246,6 @@ def scan_all_sources(): #
                     media_type_aggr[file_ext] += 1
                     total_media_count += 1
         # Print results
-        # print(f"Finished scanning!")
         print(f"Total count: {total_media_count} -- Type breakdown:", dict(media_type_aggr))
         
         # Add findings to tracker
@@ -206,22 +256,16 @@ def scan_all_sources(): #
     _results.set_total_mediacount_process(full_total)
     print("-------- SCANNING FINISHED FOR SOURCE PATHS -------------")
     
-    
 def main(): 
     # Global values to edit in this function scope
     global _results
-    #global _curr_source_path
-    #global _curr_processed_path
-    #global _curr_file_type
-    # Pre execution setup
     
+    # Pre execution setup
     swrap_test()
     
+    # Title
     print(swrap("bold", swrap("blubg", "Synology Photos Metadata Corrector")))
     print("--------------SETUP---------------")
-
-    
-    
     
     # Print global variables
     print("Supported Types: ", str(LIST_FILE_TYPE))
@@ -229,30 +273,15 @@ def main():
     for folderPath in LIST_SOURCE_PATH_FOLDERS: 
         print(swrap("g", folderPath))
     
-    
-    _results = ProcessLogger()
-    print(_results)
+    # Set up output for results file
+    _results = ProcessLogger()    
     _results.set_total_paths(LIST_SOURCE_PATH_FOLDERS)
     _results.set_total_file_types(LIST_FILE_TYPE)
     print("--------------SETUP END ---------------\n")
     
-    
-    scan_all_sources()
-    processing_media() #main function
-    # action = input (swrap("b", "Continue to processing menu? [y]"))
-    
-    # if action == "": 
-    #     print("hello" )
-    
-    
-    # if action != "y" or action != "" : 
-    #     exit(0)
-    # else: 
-    #     print("Continuing!")
-    # # Wait for user to continue program 
-    
-    # # Folder(s) Traversal
-    # swrap()
+    #Procedure
+    scan_all_album_sources()
+    process_all_albums()
     
 
 if __name__ == "__main__": 
