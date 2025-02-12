@@ -10,7 +10,7 @@ import piexif
 import re
 import shutil
 import win32com.client
-import dateRecallFunctions as drf
+import DateRecallFunctions as drf
 import ffmpeg
 import piexif
 import struct
