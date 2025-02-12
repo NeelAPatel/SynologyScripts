@@ -1,67 +1,72 @@
 from datetime import datetime, timezone
 from hachoir.metadata import extractMetadata
 from hachoir.parser import createParser
+import os
 from os.path import join, isfile
 from PIL import Image
 from PIL.ExifTags import TAGS
 import json
-import os
-import piexif
+# import piexif
 import re
-import shutil
+# import shutil
 import win32com.client
 
-def get_date_from_filename(file_name):
+def get_date_from_filename(file_path):
+    # Patterns to look for
     date_patterns = [
         r'(\d{4})(\d{2})(\d{2})',    # YYYYMMDD
         r'(\d{4})-(\d{2})-(\d{2})'   # YYYY-MM-DD
     ]
+    
     for pattern in date_patterns:
+        # For each Pattern, search in file_name for that pattern
+        file_name = os.path.basename(file_path)
         match = re.search(pattern, file_name)
-        # print(f'    > Checking pattern {pattern} in filename {file_name}')  # Debug info
-        if match:
+        
+        if match:    
+            # Get YMD from match
             year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            
+            # Quick sanity check for year
             current_year = datetime.now().year
-            # Ensure valid date components
-            # print(f'    > Extracted year: {year}, month: {month}, day: {day}')
             if 1 <= month <= 12 and 1 <= day <= 31 and year <= current_year:
                 return datetime(year, month, day)
     
-    # print("    > No date found in filename")
-    return None
+    return None #If no date found
 
-def get_time_from_filename(file_name):
+def get_time_from_filename(file_path):
+    # Patterns to look for
     time_patterns = [
         r'(\d{2})(\d{2})(\d{2})',    # HHMMSS
         r'(\d{2}):(\d{2}):(\d{2})',  # HH:MM:SS
         r'(\d{2})_(\d{2})_(\d{2})'   # HH_MM_SS (common format)
     ]
     for pattern in time_patterns:
+        # For each Pattern, search in file_name for that pattern
+        file_name = os.path.basename(file_path)
         match = re.search(pattern, file_name)
+        
         if match:
+            # Get YMD from match
             hour, minute, second = int(match.group(1)), int(match.group(2)), int(match.group(3))
-            # Ensure valid time components
+            
+            # Quick sanity check for year
             if 0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59:
                 return datetime(1, 1, 1, hour, minute, second).time()
-    
-    # print("    > No time found in filename")
-    return None
+
+    return None #If no time found
 
 def get_date_from_creation_date(file_path):
-    # print("  > FileCreation Date: ")
     try:
         creation_time = os.path.getctime(file_path)
-        # print(f"    > Date Found : {str(creation_time)}")
         return datetime.fromtimestamp(creation_time)
     except Exception as e:
         print(f"    > ERROR @ FileCreation: Cannot get file creation date for {file_path}: {e}")
     return None
 
 def get_date_from_modified_date(file_path):
-    # print("  > FileModified Date: ")
     try:
         modified_time = os.path.getmtime(file_path)
-        # print(f"    > Date Found: {modified_time}")
         return datetime.fromtimestamp(modified_time)
     except Exception as e:
         print(f"    > ERROR @ FileModified: Cannot get file modified date for {file_path}: {e}")
@@ -144,9 +149,14 @@ def get_date_from_dateAcquired(filepath):
         # print(f"    > Date acquired not found for: {filepath}")
         return None
 
-def get_date_from_JSON(source_path, possible_json_path, file_name):
+def parse_json_for_dategeo_data(file_path):
+    
+    file_name = os.path.basename(file_path)
+    #base_filename = os.path.basename(file_path)
+    path_to_directory = os.path.dirname(file_path)
+    base_dirname = os.path.basename(path_to_directory)
 
-    # Normalize the file name to handle variations
+    # Normalize the file name to handle variations of the same picture
     base_name, ext = os.path.splitext(file_name)
     normalized_base_name = normalized_name = re.sub(r' \(\d+\)|-edited', '', base_name)
 
@@ -155,23 +165,23 @@ def get_date_from_JSON(source_path, possible_json_path, file_name):
     
     print(json_file_name)
     # Full path for the file in the current directory
-    currdir_json_path = os.path.join(source_path, json_file_name)
+    currdir_json_path = os.path.join(path_to_directory, json_file_name)
 
     #gphotos_json_path = "F:\\GPhotos\\Takeout\\Google Photos"
-    gphotos_json_path = possible_json_path
+    gphotos_json_path = path_to_directory
     
-    fileFoundFlag = 0
+    # fileFoundFlag = 0
     for root, dirs, files in os.walk(gphotos_json_path):
         for file in files:
             if file == json_file_name:
                 file_path = os.path.join(root, file)
-                info = parse_json(file_path) 
+                info = extract_dategeo_from_JSON(file_path) 
                 return info
 
     return None
 
 
-def parse_json(file_path): 
+def extract_dategeo_from_JSON(file_path): 
     with open(file_path, 'r', encoding='utf-8') as f:
         try:
             data = json.load(f)
