@@ -51,41 +51,110 @@ _curr_processed_path = None
 
 
 # ========= ACTION PROCESSING =================
-
+def create_destination_paths(action, selected_date,selected_time, selected_location, selected_json_path, file_path): 
+    print ("---------- Creating Destination Path Names -------------")
+    print("Selected Date", selected_date)
+    print("Location Detection: ", selected_location)
+    print("JSON Path if used: ", selected_json_path)
+    
+    # file_name = os.path.basename(file_path)
+    # base_filename = os.path.basename(file_path)
+    # path_to_directory = os.path.dirname(file_path)
+    # base_dirname = os.path.basename(path_to_directory)
+    
+    
+    # print(file_name, '\n', base_filename, '\n', path_to_directory, '\n',  base_dirname)
+    # print(_curr_processed_path)
+    # print(_curr_file_type)
+    # print(_curr_source_path)
+    
+    # Handle Date
+    dest_datetime_str = ""
+    clean_date = str(selected_date).replace(" ", "_").replace(":", "-").replace(".", "-")
+    
+    # Handle Time
+    clean_time = ""
+    if selected_time is not None: 
+        #TODO: Incorporate selected_time
+        clean_date = str(clean_date).replace("_00-00-00", "")
+        clean_time = str(selected_time).replace(" ", "_").replace(":", "-").replace(".", "-")
+        clean_time += "_"
+    
+    # Handle Location
+    dest_loc_str = ""
+    if selected_location is not None: 
+        print("LA: ", str(selected_location[0]["latitude"]) )
+        print("LO: ", str(selected_location[0]["longitude"]) )
+        print("AL: ", str(selected_location[0]["altitude"]))
+        dest_loc_str += "_LA-" +str(selected_location[0]["latitude"]) 
+        dest_loc_str += "_LO-" +str(selected_location[0]["longitude"]) 
+        dest_loc_str += "_AL-" +str(selected_location[0]["altitude"]) + "_"
+        print(dest_loc_str, "\033[0m")
+        
+    # Sanity check and Append
+    dest_datetime_str += f"{str(clean_date)}_"
+    dest_datetime_str += f"{str(clean_time)}"
+    print("Date handling: ", selected_date , " >> " , clean_date)
+    print("Time handling: ", selected_time , " >> " , clean_time)
+    
+    # Get Original File Name
+    base_filename = os.path.basename(file_path)   
+    
+    dest_final_media_name = dest_datetime_str + dest_loc_str + base_filename
+    print("Destination Name: ", dest_final_media_name)
+    
+    if selected_json_path is not None: 
+        base_jsonname = os.path.basename(selected_json_path)
+        dest_final_json_name = dest_datetime_str + dest_loc_str + base_jsonname
+        print("Destination JSON: ", dest_final_json_name)
+    else: 
+        print("No JSON option was selected")
+    
+    
+    exit(0)
+    
+    
 def process_user_action(action:int, file_path:str, date_extractions):
     
     print("Action selected: ", action)
-    print(date_extractions)
+    # print(date_extractions)
+    selected_location = date_extractions['JSON - Location Data']
+    selected_json_path = date_extractions['JSON - Path'] if (action == 7 or action == 8) else None
     
     
     selected_date = 0
-    selected_time = 0
-    selected_location = None
-    selected_json_path = None
+    selected_time = None
     
     match action: 
 
         case 1:
-            selected_date = date_extractions['DateTime FileName'] [0]
-            selected_time = date_extractions['DateTime FileName'] [1]
+            selected_date = date_extractions['DateTime in FileName'] [0]
+            selected_time = date_extractions['DateTime in FileName'] [1]
         case 2:
-            selected_date = date_extractions['CREATION']
+            selected_date = date_extractions['FILE_CREATION']
         case 3:
-            selected_date = date_extractions['MODIFIED']
+            selected_date = date_extractions['FILE_MODIFIED']
         case 4:
             selected_date = date_extractions['METADATA']
         case 5:
             selected_date = date_extractions['EXIF']
         case 6:
-            selected_date = date_extractions['DATEACQUIRED']
+            selected_date = date_extractions['FILE_DATEACQUIRED']
         case 7:
             selected_date = date_extractions['JSON - CreationTime']
         case 8:
             selected_date = date_extractions['JSON - PhotoTakenTime']
 
-    print("Selected Date", selected_date)
-    print("Location Detection: ", selected_location)
+    # At this point we have everything we need to start. 
+    # Steps: 
+    # Create names for destination file name and save path ( based on date, time, location.)
+    #   if JSON --> create destination stuff for media AND json
+    #   else: --> create destination stuff for media only
+    # Override date in media using ffmpeg if video or
     
+
+    
+    dest_media_path, dest_json_path = create_destination_paths(action, selected_date,selected_time, selected_location, selected_json_path, file_path)
     
 
 # ========== MENU BUILDING ===============
@@ -133,7 +202,7 @@ def show_menuselection_for_current_file(date_extractors: dict):
     myIndex = 1
     for key in date_extractors: 
         if (key == "JSON - Location Data"  or key == 'JSON - Path'):
-            print(swrap("b", "  ---------- JSON LOCATION : "), swrap("g",f"{date_extractors[key]}") if date_extractors[key] is not None else swrap("r", "None"))
+            print(swrap("b", f"    {key:<22} : "), swrap("g",f"{date_extractors[key]}") if date_extractors[key] is not None else swrap("r", "None"))
         else: 
             strResponse = date_extractors[key]
             print(swrap("b", f"[{myIndex}] {key:<22} : "), swrap("g", f"{strResponse}") if strResponse is not None else swrap("r", "None"))
@@ -148,11 +217,11 @@ def extract_dates_from_file(file_path:str):
     
     return {
         'DateTime in FileName': [drf.get_date_from_filename(file_path), drf.get_time_from_filename(file_path)],
-        'CREATION': drf.get_date_from_creation_date(file_path),
-        'MODIFIED': drf.get_date_from_modified_date(file_path),
+        'FILE_CREATION': drf.get_date_from_creation_date(file_path),
+        'FILE_MODIFIED': drf.get_date_from_modified_date(file_path),
         'METADATA': drf.get_date_from_metadata(file_path),
         'EXIF': drf.get_date_from_EXIF(file_path),
-        'DATEACQUIRED': drf.get_date_from_dateAcquired(file_path),
+        'FILE_DATEACQUIRED': drf.get_date_from_dateAcquired(file_path),
         'JSON - CreationTime': creationTime, 
         'JSON - PhotoTakenTime': photoTakenTime, 
         'JSON - Location Data': locationData ,
@@ -167,7 +236,7 @@ def pad_counter_header_integer(total_count: int, index: int):
     strCount += str(index)
     return strCount
 
-def show_header_for_current_file(file_name: str, index: int, total_index): 
+def show_header_for_current_file(file_path: str, index: int, total_index): 
     # Counter Header: shows count of current file type and count of total files to process in the album
     total_mediacount_of_type = _results.get_total_mediacount_of_currType()
     total_mediacount_of_album = _results.get_total_mediacount_of_currAlbum()
@@ -176,8 +245,8 @@ def show_header_for_current_file(file_name: str, index: int, total_index):
     
     # Header for each file
     # [ 001/100 JPG 001/900 album ] | < file name> 
-    file_ext = os.path.splitext(file_name)[-1].lower()
-    pwrap("bold", swrap("gbg", f"[{strtotaltypecount}/{total_mediacount_of_type} {file_ext}s || {strtotalalbumcount}/{total_mediacount_of_album} in album] | {file_name}" ))
+    file_ext = os.path.splitext(file_path)[-1].lower()
+    pwrap("bold", swrap("gbg", f"[{strtotaltypecount}/{total_mediacount_of_type} {file_ext}s || {strtotalalbumcount}/{total_mediacount_of_album} in album] | {file_path}" ))
     
     
 def create_processed_folder_ifnotexists(file_name: str):
@@ -313,17 +382,17 @@ def main():
     global _results
     
     # Pre execution setup
-    swrap_test()
+    # swrap_test()
     
     # Title
     print(swrap("bold", swrap("blubg", "Synology Photos Metadata Corrector")))
     print("--------------SETUP---------------")
     
     # Print global variables
-    print("Supported Types: ", str(LIST_FILE_TYPE))
-    print("Folders to Process: ")
-    for folderPath in LIST_SOURCE_PATH_FOLDERS: 
-        print(swrap("g", folderPath))
+    # print("Supported Types: ", str(LIST_FILE_TYPE))
+    # print("Folders to Process: ")
+    # for folderPath in LIST_SOURCE_PATH_FOLDERS: 
+    #     print(swrap("g", folderPath))
     
     # Set up output for results file
     _results = ProcessLogger()    
