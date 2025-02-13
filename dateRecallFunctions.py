@@ -149,7 +149,7 @@ def get_date_from_dateAcquired(filepath):
         # print(f"    > Date acquired not found for: {filepath}")
         return None
 
-def parse_json_for_dategeo_data(file_path):
+def get_dategeo_from_JSON(file_path):
     
     file_name = os.path.basename(file_path)
     #base_filename = os.path.basename(file_path)

@@ -49,14 +49,54 @@ _curr_processed_path = None
 # processed_path = curr_source_path + "\\Processed"
 # skipped_path = curr_source_path + "\\Skipped"
 
+
+# ========= ACTION PROCESSING =================
+
+def process_user_action(action:int, file_path:str, date_extractions):
+    
+    print("Action selected: ", action)
+    print(date_extractions)
+    
+    
+    selected_date = 0
+    selected_time = 0
+    selected_location = None
+    selected_json_path = None
+    
+    match action: 
+
+        case 1:
+            selected_date = date_extractions['DateTime FileName'] [0]
+            selected_time = date_extractions['DateTime FileName'] [1]
+        case 2:
+            selected_date = date_extractions['CREATION']
+        case 3:
+            selected_date = date_extractions['MODIFIED']
+        case 4:
+            selected_date = date_extractions['METADATA']
+        case 5:
+            selected_date = date_extractions['EXIF']
+        case 6:
+            selected_date = date_extractions['DATEACQUIRED']
+        case 7:
+            selected_date = date_extractions['JSON - CreationTime']
+        case 8:
+            selected_date = date_extractions['JSON - PhotoTakenTime']
+
+    print("Selected Date", selected_date)
+    print("Location Detection: ", selected_location)
+    
+    
+
+# ========== MENU BUILDING ===============
 def parse_json_dategeo_response(data):
 
     if data is None: 
         return None
     else:
 
-        # json_name = os.path.basename(data['file_path'])
-        # json_path = data['file_path']
+        json_name = os.path.basename(data['file_path'])
+        json_path = data['file_path']
         # print()
         # print(f"  JSON name: {json_name}")
         # print(f"  Dates/Times:")
@@ -87,23 +127,13 @@ def parse_json_dategeo_response(data):
         # else:
         #     print("  Locations: None")
 
-        return creationTime, photoTakenTime, locationData
+        return creationTime, photoTakenTime, locationData, json_path
 
 def show_menuselection_for_current_file(date_extractors: dict): 
     myIndex = 1
     for key in date_extractors: 
-        if (key == "JSON"):
-            
-            if (date_extractors[key] is None): 
-                print(swrap("b", f"[{myIndex}] {key:<15} : "), swrap("r", "None"))    
-                break
-            
-            creationTime, photoTakenTime, locationData = parse_json_dategeo_response(date_extractors[key])
-            print(swrap("b", f"    {key:<22} : "), swrap("g", f"Valid!"))
-            print(swrap("b", f"[7] {"JSON - CREATION TIME":<22} : "), swrap("g", f"{creationTime}"))
-            print(swrap("b", f"[8] {"JSON - PHOTOTAKEN TIME":<22} : "), swrap("g", f"{photoTakenTime}"))
-            print(swrap("b", "  ---------- JSON LOCATION : "), swrap("g",f"{locationData}") if locationData is not None else swrap("r", "None"))
-            
+        if (key == "JSON - Location Data"  or key == 'JSON - Path'):
+            print(swrap("b", "  ---------- JSON LOCATION : "), swrap("g",f"{date_extractors[key]}") if date_extractors[key] is not None else swrap("r", "None"))
         else: 
             strResponse = date_extractors[key]
             print(swrap("b", f"[{myIndex}] {key:<22} : "), swrap("g", f"{strResponse}") if strResponse is not None else swrap("r", "None"))
@@ -111,16 +141,23 @@ def show_menuselection_for_current_file(date_extractors: dict):
 
 
 def extract_dates_from_file(file_path:str):
+    json_response = drf.get_dategeo_from_JSON(file_path)
+    print(json_response)
+    
+    creationTime, photoTakenTime, locationData, json_path = parse_json_dategeo_response(json_response)
+    
     return {
-        'DateFileName': drf.get_date_from_filename(file_path),
-        'TimeFileName': drf.get_time_from_filename(file_path),
+        'DateTime in FileName': [drf.get_date_from_filename(file_path), drf.get_time_from_filename(file_path)],
         'CREATION': drf.get_date_from_creation_date(file_path),
         'MODIFIED': drf.get_date_from_modified_date(file_path),
         'METADATA': drf.get_date_from_metadata(file_path),
         'EXIF': drf.get_date_from_EXIF(file_path),
         'DATEACQUIRED': drf.get_date_from_dateAcquired(file_path),
-        'JSON': drf.parse_json_for_dategeo_data(file_path)
-    }
+        'JSON - CreationTime': creationTime, 
+        'JSON - PhotoTakenTime': photoTakenTime, 
+        'JSON - Location Data': locationData ,
+        'JSON - Path': json_path
+    }   
 
 
 def pad_counter_header_integer(total_count: int, index: int):
@@ -160,6 +197,9 @@ def create_processed_folder_ifnotexists(file_name: str):
         pwrap("m",f"Folder created: {_curr_processed_path}")
 
 
+
+
+
 def process_all_albums(): 
     # Global values to edit in this function scope
     global _results
@@ -194,31 +234,43 @@ def process_all_albums():
                     #Create processed folder
                     create_processed_folder_ifnotexists(file_name)
                     #print(file_name)
-                    
                     show_header_for_current_file(file_path, index, total_album_index)
                     
-                    date_extractions = extract_dates_from_file(file_path)
-                    action = show_menuselection_for_current_file(date_extractions)
                     
-                    #Show File Name and counter
-                    dummyaction = input("everything looks good? ")
+                    while True: 
+                        # Header and Menu
+                        
+                        date_extractions = extract_dates_from_file(file_path)
+                        show_menuselection_for_current_file(date_extractions)
+                        
+                        action = input(swrap("y", "Enter 1-8 to select override date, 'r' to refresh, 'x' to exit: \n >>> "))
+                        
+                        indexed_keys = dict(enumerate(date_extractions.keys()))
+                        # action = '1' # AUTO LOOPER
+                        
+                        if action in ['1', '2', '3', '4', '5', '6', '7', '8', 'x', 'r']:
+                            if action == 'x':
+                                pwrap("rbg", "Exiting...")
+                                exit(0)
+                            elif (date_extractions[indexed_keys[int(action)-1]] is None): 
+                                
+                                pwrap("rbg", f"Selected Date override [{indexed_keys[int(action)-1]}] is marked as [None].  Refreshing...")
+                                continue  # Restart the loop to refresh the information
+                            elif action == 'r':
+                                pwrap("cbg", "Refreshing...")
+                                continue  # Restart the loop to refresh the information
+                            else:
+                                # Process action based on the user's valid selection
+                                process_user_action(int(action), file_path, date_extractions)
+                                
+                                
+                                # Stopper 
+                                input("STOPPER LINE")
+                                break
+                        else:
+                            # Print an error message for invalid input and re-ask the question
+                            pwrap("r","Invalid input! Please enter a number between 1-8, 'r' to refresh, 'x'to exit.")
                     index += 1
-                    #if os.path.isfile()
-                    
-                    # Create Processed_Filetype folde rif does not exist
-
-                    
-                    # Retrieve current date values
-                # retrieve json value
-                # ask to override 
-                # if overwrite --> process action
-                    #when processing complete --> move into //Processed_originals
-                # else
-                    # let file be and move on
-    
-    #print(_curr_processed_path)
-    #print(_curr_file_type)
-    #print(_curr_source_path)
     pwrap("reset", "------- PROCESSING ALBUMS ENDED --------------")
     return
 
