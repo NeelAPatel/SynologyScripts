@@ -25,6 +25,11 @@ import dateRecallFunctions as drf
 from string_format_wrap import swrap, pwrap, swrap_test
 import json 
 import os
+import shutil
+from PIL import Image, ImageFile
+from PIL.ExifTags import TAGS
+import piexif
+import ffmpeg
 # Global Vars
 
 LIST_FILE_TYPE = [".jpg", ".png", ".jpeg", ".mp4", ".gif", ".dng", ".webp", ".mov", ".heic"]
@@ -50,9 +55,53 @@ _curr_processed_path = None
 # skipped_path = curr_source_path + "\\Skipped"
 
 
+# ========= OVERRIDE PROCESSING ===============
+def copy_and_check(source, destination):
+    if source is None: 
+        print("No Source value provided to copy")
+        return
+    
+    
+    # Check if the destination file exists before copying
+    file_exists = os.path.exists(destination)
+
+    if file_exists:
+        # Get the timestamp and size of the existing file
+        existing_stat = os.stat(destination)
+        existing_timestamp = existing_stat.st_mtime
+        existing_size = existing_stat.st_size
+
+    # Perform the copy operation with metadata preservation
+    # print("Copying from: ", source)
+    # print("Copying to: ", destination)
+    shutil.copy2(source, destination)
+
+    # Check if the file exists after the copy operation
+    if os.path.exists(destination):
+        # Get the timestamp and size of the copied file
+        copied_stat = os.stat(destination)
+        copied_timestamp = copied_stat.st_mtime
+        copied_size = copied_stat.st_size
+
+        if file_exists:
+            # Compare timestamps and sizes to determine if it was overwritten
+            if (copied_timestamp != existing_timestamp or
+                copied_size != existing_size):
+                print(f"File [{os.path.basename(source)}] copied successfully to {destination} (Overwritten).")
+            else:
+                print(f"File [{os.path.basename(source)}]  already exists at {destination}, and no changes were made.")
+        else:
+            print(f"File [{os.path.basename(source)}]  copied successfully to {destination} (New file created).")
+    else:
+        print("Error: File was not copied.")
+
+
+    
 # ========= ACTION PROCESSING =================
+
 def create_destination_paths(action, selected_date,selected_time, selected_location, selected_json_path, file_path): 
     print ("---------- Creating Destination Path Names -------------")
+    print("Current Media Path: ", file_path)
     print("Selected Date", selected_date)
     print("Location Detection: ", selected_location)
     print("JSON Path if used: ", selected_json_path)
@@ -94,39 +143,45 @@ def create_destination_paths(action, selected_date,selected_time, selected_locat
     # Sanity check and Append
     dest_datetime_str += f"{str(clean_date)}_"
     dest_datetime_str += f"{str(clean_time)}"
-    print("Date handling: ", selected_date , " >> " , clean_date)
-    print("Time handling: ", selected_time , " >> " , clean_time)
+    # print("Date handling: ", selected_date , " >> " , clean_date)
+    # print("Time handling: ", selected_time , " >> " , clean_time)
     
     # Get Original File Name
     base_filename = os.path.basename(file_path)   
     
     dest_final_media_name = dest_datetime_str + dest_loc_str + base_filename
-    print("Destination Name: ", dest_final_media_name)
+    dest_final_media_path = os.path.join(_curr_processed_path, dest_final_media_name)
     
+    print("Destination File Name: ", dest_final_media_name)
+    print("Destination File Path: ", dest_final_media_path)
+    
+    dest_final_json_path = None
     if selected_json_path is not None: 
         base_jsonname = os.path.basename(selected_json_path)
         dest_final_json_name = dest_datetime_str + dest_loc_str + base_jsonname
-        print("Destination JSON: ", dest_final_json_name)
+        dest_final_json_path = os.path.join(_curr_processed_path, dest_final_json_name)
+        print("Destination JSON name: ", dest_final_json_name)
+        print("Destination JSON Path: ", dest_final_json_path)
     else: 
         print("No JSON option was selected")
     
     
-    exit(0)
+    print ("----------  Destination Path created! -------------")
+    return dest_final_media_path, dest_final_json_path
     
     
-def process_user_action(action:int, file_path:str, date_extractions):
     
+        
+def process_user_action(action:int, curr_media_path:str, date_extractions):
+    # Take the User's Selection and determine selected date/json/time/location values
     print("Action selected: ", action)
     # print(date_extractions)
     selected_location = date_extractions['JSON - Location Data']
     selected_json_path = date_extractions['JSON - Path'] if (action == 7 or action == 8) else None
-    
-    
+        
     selected_date = 0
     selected_time = None
-    
     match action: 
-
         case 1:
             selected_date = date_extractions['DateTime in FileName'] [0]
             selected_time = date_extractions['DateTime in FileName'] [1]
@@ -146,20 +201,47 @@ def process_user_action(action:int, file_path:str, date_extractions):
             selected_date = date_extractions['JSON - PhotoTakenTime']
 
     # At this point we have everything we need to start. 
+
     # Steps: 
-    # Create names for destination file name and save path ( based on date, time, location.)
-    #   if JSON --> create destination stuff for media AND json
-    #   else: --> create destination stuff for media only
-    # Override date in media using ffmpeg if video or
+    # 1. Create names for destination file name and save path ( based on date, time, location.)
+    #     if JSON --> create destination stuff for media AND json
+    #     else: --> create destination stuff for media only
+    # 2. Check if media is Image or Video
+    # 3. process accordingly
+        # custom file types need to be handled 
     
 
+    # 1. Create names for destination media and optionally JSON
+    dest_media_path, dest_json_path = create_destination_paths(action, selected_date,selected_time, selected_location, selected_json_path, curr_media_path)
     
-    dest_media_path, dest_json_path = create_destination_paths(action, selected_date,selected_time, selected_location, selected_json_path, file_path)
+    # 2. Copy file to new destination
+    copy_and_check(curr_media_path, dest_media_path)
+    copy_and_check(selected_json_path, dest_json_path)
+    
+    known_image_extensions = {'.jpeg', '.jpg', '.bmp', '.png', '.cr2', '.webp', '.dng', '.heic'}
+    known_video_extensions = {'.mov', '.mp4', '.avi', '.mkv', '.gif'}
+    _, curr_ext = os.path.splitext(curr_media_path)
+    input("BREAKER POINT")
+    # if (curr_ext.lower() in known_image_extensions): 
+    #     # process as image
+    # elise
+    
+    if curr_ext in known_image_extensions: 
+        override_image_date_values(selected_date, selected_time, selected_location, dest_media_path, dest_json_path)
+    elif curr_ext in known_video_extensions: 
+    else: 
+        
+    
+    
+    # Copy file
+    # Override metadata
+    
+    
     
 
 # ========== MENU BUILDING ===============
 def parse_json_dategeo_response(data):
-
+    # Parses through JSON data to locate creationTime, photoTakenTime, LocationData and the path of json itself. 
     if data is None: 
         return None
     else:
@@ -184,23 +266,14 @@ def parse_json_dategeo_response(data):
                 locationData.append(locDict)
         else:
             locationData = None
-        # count = 8
-        # for dt in data['dates_times']:
-        #     print(f"    - [{count}] {dt[0]}, {dt[1]}, {type(dt[1])}")
-        #     count += 1
-        
-        # if data['locations']:
-        #     print("Locations:")
-        #     for location in data['locations']:
-        #         print(f"    - Latitude: {location['latitude']}, Longitude: {location['longitude']}, Altitude: {location['altitude']} meters")
-        # else:
-        #     print("  Locations: None")
 
         return creationTime, photoTakenTime, locationData, json_path
 
 def show_menuselection_for_current_file(date_extractors: dict): 
+    # Generates menu selection of different dates using the dictionary of dates provided
     myIndex = 1
     for key in date_extractors: 
+        #JSON related data has to be handled seperately for clarity's sake
         if (key == "JSON - Location Data"  or key == 'JSON - Path'):
             print(swrap("b", f"    {key:<22} : "), swrap("g",f"{date_extractors[key]}") if date_extractors[key] is not None else swrap("r", "None"))
         else: 
@@ -210,6 +283,8 @@ def show_menuselection_for_current_file(date_extractors: dict):
 
 
 def extract_dates_from_file(file_path:str):
+    # Using the file path provided, extract all variations of date values that can exist within a file. 
+    # JSON Sidecar files from Google Photos are handled seperately, but gives the preferred Photo Taken Time value
     json_response = drf.get_dategeo_from_JSON(file_path)
     print(json_response)
     
@@ -230,9 +305,11 @@ def extract_dates_from_file(file_path:str):
 
 
 def pad_counter_header_integer(total_count: int, index: int):
+    # Pads the integer value with prefixed zeros so all the text lines up 
     strCount = ""
     for _ in range(len(str(total_count)) - len(str(index))): 
-        strCount+= "0"
+        # Char Length of denominator value minus length of current value 
+        strCount+= "0" 
     strCount += str(index)
     return strCount
 
@@ -346,7 +423,7 @@ def process_all_albums():
 def scan_all_album_sources():
     print("-------- SCANNING SOURCE PATHS -------------")
     
-    full_total = 0
+    full_total = 0 # Count all media detected for the logs
     for source_path in LIST_SOURCE_PATH_FOLDERS: 
         #Loop through all source folders
         
@@ -400,7 +477,7 @@ def main():
     _results.set_total_file_types(LIST_FILE_TYPE)
     print("--------------SETUP END ---------------\n")
     
-    #Procedure
+    #Overall Procedure: Scan the folders --> Start going through folders and media one by one
     scan_all_album_sources()
     process_all_albums()
     
