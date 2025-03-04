@@ -30,6 +30,8 @@ from PIL import Image, ImageFile
 from PIL.ExifTags import TAGS
 import piexif
 import ffmpeg
+import struct
+from datetime import datetime, timezone
 # Global Vars
 
 LIST_FILE_TYPE = [".jpg", ".png", ".jpeg", ".mp4", ".gif", ".dng", ".webp", ".mov", ".heic"]
@@ -53,6 +55,24 @@ _curr_file_type = None
 _curr_processed_path = None
 # processed_path = curr_source_path + "\\Processed"
 # skipped_path = curr_source_path + "\\Skipped"
+
+
+# ========= OVERRIDE HELPERS ==========
+
+def convert_degrees_to_rational(deg):
+    """Helper function to convert degrees into rational format required for EXIF."""
+    d = int(deg[0])
+    m = int(deg[1])
+    s = deg[2] * 100
+    return ((d, 1), (m, 1), (int(s), 100))
+
+def convert_rational_to_degrees(rational):
+    """Helper function to convert rational format back to degrees."""
+    d = rational[0][0] / rational[0][1]
+    m = rational[1][0] / rational[1][1]
+    s = rational[2][0] / rational[2][1] / 100
+    return d + (m / 60.0) + (s / 3600.0)
+
 
 
 # ========= OVERRIDE PROCESSING ===============
@@ -95,8 +115,186 @@ def copy_and_check(source, destination):
     else:
         print("Error: File was not copied.")
 
+def override_image_save_resolution(img, exif_dict, selected_date, selected_time, selected_location, dest_media_path, dest_json_path):
+    # === Save resolution ====
+    try:
+        # Attempt to dump the EXIF data first without any correction
+        exif_bytes = piexif.dump(exif_dict)
+        img.save(dest_media_path, exif=exif_bytes)
+        if isinstance(selected_date, str):
+            new_datetime = datetime.datetime.strptime(selected_date, "%Y:%m:%d %H:%M:%S")
+        else:
+            new_datetime = selected_date
+        
+        timestamp = new_datetime.timestamp()
+
+        # Update file system times
+        os.utime(dest_media_path, (timestamp, timestamp))
+        print(f"\033[92mOVERRIDE COMPLETE! EXIF data successfully updated for {dest_media_path}\033[0m")
+        
+        
+        return  # Success, so return early
+    except struct.error as e:
+        print(f"\033[91mERROR: Initial EXIF dump failed! {e}\033[0m")
+        print("=== DEBUG: Checking and Correcting GPS Data ===")
+        if 'GPS' in exif_dict:
+            # Correct Latitude (Tag: 2)
+            if piexif.GPSIFD.GPSLatitude in exif_dict['GPS']:
+                latitude = exif_dict['GPS'][piexif.GPSIFD.GPSLatitude]
+                # Ensure latitude seconds are positive
+                exif_dict['GPS'][piexif.GPSIFD.GPSLatitude] = [(abs(lat[0]), lat[1]) for lat in latitude]
+                print(f"Corrected GPS Latitude: {exif_dict['GPS'][piexif.GPSIFD.GPSLatitude]}")
+
+            # Correct Longitude (Tag: 4)
+            if piexif.GPSIFD.GPSLongitude in exif_dict['GPS']:
+                longitude = exif_dict['GPS'][piexif.GPSIFD.GPSLongitude]
+                # Ensure longitude seconds are positive
+                exif_dict['GPS'][piexif.GPSIFD.GPSLongitude] = [(abs(lon[0]), lon[1]) for lon in longitude]
+                print(f"Corrected GPS Longitude: {exif_dict['GPS'][piexif.GPSIFD.GPSLongitude]}")
+
+            # Correct Altitude (Tag: 27)
+            if piexif.GPSIFD.GPSAltitude in exif_dict['GPS']:
+                try:
+                    altitude = exif_dict['GPS'][piexif.GPSIFD.GPSAltitude]
+                    # Check if the altitude is stored as a string
+                    if isinstance(altitude, bytes):
+                        altitude = float(altitude.decode())
+                    exif_dict['GPS'][piexif.GPSIFD.GPSAltitude] = int(altitude * 100)  # Store as integer meters
+                    print(f"Corrected GPS Altitude: {exif_dict['GPS'][piexif.GPSIFD.GPSAltitude]}")
+                except Exception as e:
+                    print(f"Failed to correct GPS Altitude: {e}")
+
+        # === TRY SAVING AGAIN AFTER CORRECTIONS ===
+        try:
+            exif_bytes = piexif.dump(exif_dict)
+            img.save(dest_media_path, exif=exif_bytes)
+            if isinstance(selected_date, str):
+                new_datetime = datetime.datetime.strptime(selected_date, "%Y:%m:%d %H:%M:%S")
+            else:
+                new_datetime = selected_date
+            
+            timestamp = new_datetime.timestamp()
+
+            print(f"\033[92mOVERRIDE COMPLETE! EXIF data successfully updated for {dest_media_path}\033[0m")
+                # Update file system times
+            os.utime(dest_media_path, (timestamp, timestamp))
+        except struct.error as e:
+            print(f"\033[91mERROR: EXIF dump failed after corrections! {e}\033[0m")
+            raise  # Let the error propagate and crash if it fails again
+
+def override_image_gps_values(exif_dict, selected_location):
+    
+    # === OVERRIDE GPS IF NEEDED === 
+
+    # if GPS in exif
+        # do nothing
+    # if GPS not in exif and GPS in selected
+        # add
+    # if gps not in exif and GPS not in selected
+        # do nothing
+        # === DEBUGGING: Log GPS Data ====
+    print("=== DEBUG: Checking GPS Data ===")
+    if 'GPS' in exif_dict:
+        for key, value in exif_dict['GPS'].items():
+            print(f"GPS Tag: {key}, Value: {value}")
+            # Check if the value exceeds 32-bit integer limit
+            if isinstance(value, int) and value > 4294967295:
+                print(f"\033[91mWARNING: GPS Value too large! Key: {key}, Value: {value}\033[0m")
+                # Optionally: Modify or remove the invalid entry
+                # exif_dict['GPS'][key] = 0  # Set to 0 or handle it differently
+    else:
+        print("No GPS data found in EXIF.")
+        
 
     
+    
+    if exif_dict['GPS'] and selected_location: 
+        print("GPS data found in Photo and JSON  = No Overwrite, checking exactness")
+        print("Coords from JSON: ", selected_location[0])
+
+
+        gps_data = exif_dict['GPS']
+        lat = convert_rational_to_degrees(gps_data[piexif.GPSIFD.GPSLatitude])
+        lat_ref = gps_data[piexif.GPSIFD.GPSLatitudeRef].decode('utf-8')
+        lon = convert_rational_to_degrees(gps_data[piexif.GPSIFD.GPSLongitude])
+        lon_ref = gps_data[piexif.GPSIFD.GPSLongitudeRef].decode('utf-8')
+        print(f"Coords from PHOTO: : Latitude: {lat} {lat_ref}, Longitude: {lon} {lon_ref}")
+
+        if lat_ref == "" or lon_ref == "": 
+            if lat_ref == "": 
+                print("Error: Fixing EMPTY lat_ref")
+                gps_data[piexif.GPSIFD.GPSLatitudeRef] = b'N' if selected_location[0]['latitude'] >= 0 else b'S'
+        
+            if lon_ref == "": 
+                print("Error: Fixing EMPTY lon_ref")
+                gps_data[piexif.GPSIFD.GPSLongitudeRef] = b'E' if selected_location[0]['longitude'] >= 0 else b'W'
+        
+            lat = convert_rational_to_degrees(gps_data[piexif.GPSIFD.GPSLatitude])
+            lat_ref = gps_data[piexif.GPSIFD.GPSLatitudeRef].decode('utf-8')
+            lon = convert_rational_to_degrees(gps_data[piexif.GPSIFD.GPSLongitude])
+            lon_ref = gps_data[piexif.GPSIFD.GPSLongitudeRef].decode('utf-8')
+            print(f"Coords from FIXED PHOTO : Latitude: {lat} {lat_ref}, Longitude: {lon} {lon_ref}")
+    elif 'GPS' not in exif_dict and selected_location: 
+        print("GPS data found in JSON Only = Overwring with Matching GPS Data")
+
+        gps_data = exif_dict[exif_dict]
+        new_lat = selected_location[0]["latitude"]
+        new_lon = selected_location[0]["longitude"]
+        
+        print("NEW LAT: ", str(new_lat))
+        print("NEW LON: ", str(new_lon))
+        if (new_lat != 0.0) and (new_lon != 0.0):
+                gps_ifd = {
+                    piexif.GPSIFD.GPSLatitudeRef: b'N' if new_lat >= 0 else b'S',
+                    piexif.GPSIFD.GPSLatitude: convert_degrees_to_rational([abs(new_lat), 0, 0]),  # Assuming basic format
+                    piexif.GPSIFD.GPSLongitudeRef: b'E' if new_lon >= 0 else b'W',
+                    piexif.GPSIFD.GPSLongitude: convert_degrees_to_rational([abs(new_lon), 0, 0]),
+                }
+                exif_dict['GPS'] = gps_ifd
+        else:
+            print("Geolocation values are all zero; skipping GPS update.")
+
+
+    return exif_dict
+
+
+def override_image_date_values(img, exif_dict, selected_date, selected_time): 
+    # Seems to only work with jpeg and jpg
+    print("EXIF data loaded: ")
+    exifdata = img.getexif()
+    for tag_id in exifdata:
+        # get the tag name, instead of human unreadable tag id
+        tag = TAGS.get(tag_id, tag_id)
+        data = exifdata.get(tag_id)
+        # decode bytes
+        if isinstance(data, bytes):
+            data = data.decode()
+        print(f"{tag:25}: {data}")
+    print()
+
+    # === OVERRIDE DATE ====
+    exif_date_str = selected_date.strftime("%Y:%m:%d %H:%M:%S")
+
+    # Update EXIF date values
+    exif_dict['0th'][piexif.ImageIFD.DateTime] = exif_date_str
+    exif_dict['Exif'][piexif.ExifIFD.DateTimeOriginal] = exif_date_str
+    exif_dict['Exif'][piexif.ExifIFD.DateTimeDigitized] = exif_date_str
+
+    
+    print("EXIF data overridden", str(exif_dict))
+    return img, exif_dict
+
+def override_image_exif_existence(img): 
+        # ==== RESOLVE EXIF existence ====
+    if 'exif' not in img.info: 
+        pwrap("r", "EXIF data not found")
+        print("Exif data needs to be created with date time data")
+        exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
+    else: 
+        pwrap("g", "EXIF data exists!")
+        exif_dict = piexif.load(img.info['exif'])
+    
+    return exif_dict
 # ========= ACTION PROCESSING =================
 
 def create_destination_paths(action, selected_date,selected_time, selected_location, selected_json_path, file_path): 
@@ -169,8 +367,6 @@ def create_destination_paths(action, selected_date,selected_time, selected_locat
     print ("----------  Destination Path created! -------------")
     return dest_final_media_path, dest_final_json_path
     
-    
-    
         
 def process_user_action(action:int, curr_media_path:str, date_extractions):
     # Take the User's Selection and determine selected date/json/time/location values
@@ -227,9 +423,19 @@ def process_user_action(action:int, curr_media_path:str, date_extractions):
     # elise
     
     if curr_ext in known_image_extensions: 
-        override_image_date_values(selected_date, selected_time, selected_location, dest_media_path, dest_json_path)
+        if curr_ext in {'.jpeg', '.jpg', '.bmp', '.png', '.cr2', '.webp', '.dng', '.heic'}: 
+            # Open the image and load existing EXIF data
+            ImageFile.LOAD_TRUNCATED_IMAGES = True
+            img = Image.open(dest_media_path)
+            exif_dict = {}
+            exif_dict = override_image_exif_existence(img)
+            img, exif_dict = override_image_date_values(img, exif_dict, selected_date, selected_time)
+            exif_dict = override_image_gps_values(exif_dict, selected_location)
+            override_image_save_resolution(img, exif_dict, selected_date, selected_time, selected_location, dest_media_path, dest_json_path)
+        elif curr_ext in {}:
+            return
     elif curr_ext in known_video_extensions: 
-    else: 
+        return
         
     
     
