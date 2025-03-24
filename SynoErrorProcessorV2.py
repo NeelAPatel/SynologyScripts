@@ -43,9 +43,10 @@ LIST_SOURCE_PATH_FOLDERS = [
     r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Untitled",
     r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D 4-27",
     r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D @ UBS 4-27",
-    # str(r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\ASHP Midyear 23 - Anaheim, CA"), 
-    
-    # str(r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\test_folder")
+    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Quotes n Stuff",
+    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Senior 2020",
+    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Six Flags-Delaware Trip!",
+    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Sixteenth Birthday"
     # "E:\Apps"
 ]
 
@@ -151,7 +152,7 @@ def override_video_data(curr_file_path, destinationfilepath, selected_date, sele
         **{
             'metadata': f'creation_time={exif_date_str}',  # Set video creation time
         }
-        ).global_args('-hide_banner', '-loglevel', 'info').run()
+        ).global_args('-hide_banner', '-loglevel', 'info', '-y').run()
 
         print(f"\033[92mVideo metadata updated for {destinationfilepath}\033[0m")
         
@@ -536,6 +537,10 @@ def process_user_action(action:int, curr_media_path:str, date_extractions):
     elif curr_ext.lower() in known_video_extensions: 
         override_video_data(curr_media_path, dest_media_path, selected_date, selected_location)
         # return
+    
+    #Update Logs
+    _results.add_new_processed_media(curr_media_path,dest_media_path)
+    
         
 
 # ========== MENU BUILDING ===============
@@ -622,10 +627,13 @@ def pad_counter_header_integer(total_count: int, index: int):
     strCount += str(index)
     return strCount
 
-def show_header_for_current_file(file_path: str, index: int, total_index): 
+def show_header_for_current_file(file_path: str, total_index): 
     # Counter Header: shows count of current file type and count of total files to process in the album
     total_mediacount_of_type = _results.get_total_mediacount_of_currType()
     total_mediacount_of_album = _results.get_total_mediacount_of_currAlbum()
+    
+    index = _results.get_processed_count_per_extention(file_path) + 1
+    
     strtotaltypecount = pad_counter_header_integer(total_count=total_mediacount_of_type, index=index)
     strtotalalbumcount = pad_counter_header_integer(total_count=total_mediacount_of_album, index=total_index)
     
@@ -687,87 +695,95 @@ def process_all_albums():
     automationFlag = False
     # For each folder
     pwrap("reset", "------- PROCESSING ALBUMS STARTED --------------")
+    
+    # files = os.listdir(source_path)
+    # for file in files:
+    #     file_path = os.path.join(source_path, file)
+    #     if os.path.isfile(file_path):
+    
     for source_path in LIST_SOURCE_PATH_FOLDERS: 
         #Global set
-        _curr_source_path = source_path
+        _curr_source_path = source_path # album
         total_album_index = 1
         
-        for root, _, files in os.walk(source_path): 
+        # files = sort_files_by_extension_and_name(_curr_source_path)
+        
+        # for root, _, files in os.walk(source_path): 
             #For each traversal, 
             
-            #Sort all the files
-            files = sort_files_by_extension_and_name(_curr_source_path)
-            # files = sorted(os.listdir(_curr_source_path))
-            index = 1            
-            for file_name in files:
+        #Sort all the files
+        files = sort_files_by_extension_and_name(_curr_source_path)
+        # files = sorted(os.listdir(_curr_source_path))
+        # index = 1            
+        for file_name in files:
+            
+            # Create a file_path alongside file_name
+            file_path = os.path.join(_curr_source_path, file_name)
+            # If the file is a valid file we're ready to process, go ahead and show the menu
+            if os.path.isfile(file_path) and any(file_name.lower().endswith(ext) for ext in LIST_FILE_TYPE):
                 
-                # Create a file_path alongside file_name
-                file_path = os.path.join(_curr_source_path, file_name)
-                # If the file is a valid file we're ready to process, go ahead and show the menu
-                if os.path.isfile(file_path) and any(file_name.lower().endswith(ext) for ext in LIST_FILE_TYPE):
+                
+                #Set current file as its being explored 
+                _results.set_current_processing_file(file_path)
+                
+                #Create processed folder
+                create_processed_folder_ifnotexists(file_name)
+                #print(file_name)
+                show_header_for_current_file(file_path, total_album_index)
+                
+                
+                while True: 
+                    # Header and Menu
                     
+                    date_extractions, json_creation_time, json_photo_taken_time = extract_dates_from_file(file_path)
+                    show_menuselection_for_current_file(date_extractions)
+                    if automationFlag == False: 
+                        action = input(swrap("y", "Enter 1-8 to select override date, 'r' to refresh, 'x' to exit: \n >>> "))
+                    elif (automationFlag == True and date_extractions['JSON - CreationTime'] is not None):
+                        action = '8'
                     
-                    #Set current file as its being explored 
-                    _results.set_current_processing_file(file_path)
+                    indexed_keys = dict(enumerate(date_extractions.keys()))
+                    # action = '1' # AUTO LOOPER
                     
-                    #Create processed folder
-                    create_processed_folder_ifnotexists(file_name)
-                    #print(file_name)
-                    show_header_for_current_file(file_path, index, total_album_index)
-                    
-                    
-                    while True: 
-                        # Header and Menu
-                        
-                        date_extractions, json_creation_time, json_photo_taken_time = extract_dates_from_file(file_path)
-                        show_menuselection_for_current_file(date_extractions)
-                        if automationFlag == False: 
-                            action = input(swrap("y", "Enter 1-8 to select override date, 'r' to refresh, 'x' to exit: \n >>> "))
-                        elif (automationFlag == True and date_extractions['JSON - CreationTime'] is not None):
-                            action = '8'
-                        
-                        indexed_keys = dict(enumerate(date_extractions.keys()))
-                        # action = '1' # AUTO LOOPER
-                        
-                        if action in ['1', '2', '3', '4', '5', '6', '7', '8', 'x', 'r', 'a']:
-                            if action == 'a':
-                                if (json_creation_time is not None or json_photo_taken_time is not None): 
-                                    # action = 8
-                                    action = '8'
-                                    automationFlag = True
-                                else:
-                                    automationFlag = False
-                                    action = "r"
-                                    pwrap("rbg", f"{json_creation_time is not None}: {json_creation_time}")
-                                    pwrap("rbg", f"{json_photo_taken_time is not None}: {json_photo_taken_time}")
-                                    pwrap("rbg", f"{(json_creation_time is not None or json_photo_taken_time is not None)}")
-                                    pwrap("rbg", "ERROR: Could not automate, json flag is None")
-                                    continue
-                                
-                                
-                            if action == 'x':
-                                pwrap("rbg", "Exiting...")
-                                automationFlag = False
-                                exit(0)
-                            elif (date_extractions[indexed_keys[int(action)-1]] is None): 
-                                
-                                pwrap("rbg", f"Selected Date override [{indexed_keys[int(action)-1]}] is marked as [None].  Refreshing...")
-                                automationFlag = False
-                                continue  # Restart the loop to refresh the information
-                            elif action == 'r':
-                                pwrap("cbg", "Refreshing...")
-                                # automationFlag = False
-                                continue  # Restart the loop to refresh the information
+                    if action in ['1', '2', '3', '4', '5', '6', '7', '8', 'x', 'r', 'a']:
+                        if action == 'a':
+                            if (json_creation_time is not None or json_photo_taken_time is not None): 
+                                # action = 8
+                                action = '8'
+                                automationFlag = True
                             else:
-                                # Process action based on the user's valid selection
-                                process_user_action(int(action), file_path, date_extractions)
-                                
-                                
-                                break
+                                automationFlag = False
+                                action = "r"
+                                pwrap("rbg", f"{json_creation_time is not None}: {json_creation_time}")
+                                pwrap("rbg", f"{json_photo_taken_time is not None}: {json_photo_taken_time}")
+                                pwrap("rbg", f"{(json_creation_time is not None or json_photo_taken_time is not None)}")
+                                pwrap("rbg", "ERROR: Could not automate, json flag is None")
+                                continue
+                            
+                            
+                        if action == 'x':
+                            pwrap("rbg", "Exiting...")
+                            automationFlag = False
+                            exit(0)
+                        elif (date_extractions[indexed_keys[int(action)-1]] is None): 
+                            
+                            pwrap("rbg", f"Selected Date override [{indexed_keys[int(action)-1]}] is marked as [None].  Refreshing...")
+                            automationFlag = False
+                            continue  # Restart the loop to refresh the information
+                        elif action == 'r':
+                            pwrap("cbg", "Refreshing...")
+                            # automationFlag = False
+                            continue  # Restart the loop to refresh the information
                         else:
-                            # Print an error message for invalid input and re-ask the question
-                            pwrap("r","Invalid input! Please enter a number between 1-8, 'r' to refresh, 'x'to exit.")
-                    index += 1
+                            # Process action based on the user's valid selection
+                            process_user_action(int(action), file_path, date_extractions)
+                            
+                            
+                            break
+                    else:
+                        # Print an error message for invalid input and re-ask the question
+                        pwrap("r","Invalid input! Please enter a number between 1-8, 'r' to refresh, 'x'to exit.")
+                total_album_index += 1
     pwrap("reset", "------- PROCESSING ALBUMS ENDED --------------")
     return
 
@@ -788,17 +804,26 @@ def scan_all_album_sources():
             
         # Traverse all files in the folder to count everything
         print(f"\nScanning folder: {source_path}")
-        for root, _, files in os.walk(source_path):
-            for file in files:
-                file_ext = os.path.splitext(file)[-1].lower()  # Extract file extension
+        files = os.listdir(source_path)
+        for file in files:
+            file_path = os.path.join(source_path, file)
+            if os.path.isfile(file_path):
+                file_ext = os.path.splitext(file)[-1].lower()
                 if file_ext in LIST_FILE_TYPE:
                     media_type_aggr[file_ext] += 1
                     total_media_count += 1
+        
+        # for root, _, files in os.walk(source_path):
+        #     for file in files:
+        #         file_ext = os.path.splitext(file)[-1].lower()  # Extract file extension
+        #         if file_ext in LIST_FILE_TYPE:
+        #             media_type_aggr[file_ext] += 1
+        #             total_media_count += 1
         # Print results
         print(f"Total count: {total_media_count} -- Type breakdown:", dict(media_type_aggr))
         
         # Add findings to tracker
-        _results.add_album_to_tracking(source_path, total_media_count, media_type_aggr)
+        _results.add_new_album_for_tracking(source_path, total_media_count, media_type_aggr)
         full_total += total_media_count
     
     
@@ -824,8 +849,8 @@ def main():
     
     # Set up output for results file
     _results = ProcessLogger()    
-    _results.set_total_paths(LIST_SOURCE_PATH_FOLDERS)
-    _results.set_total_file_types(LIST_FILE_TYPE)
+    _results.set_list_album_paths_to_process(LIST_SOURCE_PATH_FOLDERS)
+    _results.set_list_media_types_to_process(LIST_FILE_TYPE)
     print("--------------SETUP END ---------------\n")
     
     #Overall Procedure: Scan the folders --> Start going through folders and media one by one
