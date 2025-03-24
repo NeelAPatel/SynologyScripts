@@ -10,6 +10,9 @@ import json
 import re
 # import shutil
 import win32com.client
+import logging
+logging.getLogger("hachoir").setLevel(logging.ERROR)
+
 
 def get_date_from_filename(file_path):
     # Patterns to look for

@@ -34,19 +34,23 @@ import struct
 from datetime import datetime, timezone
 from collections import defaultdict
 # Global Vars
+import logging
+logging.getLogger("hachoir").setLevel(logging.ERROR)
+
 
 LIST_FILE_TYPE = [".jpg", ".png", ".jpeg", ".mp4", ".gif", ".dng", ".webp", ".mov", ".heic"]
 
 LIST_SOURCE_PATH_FOLDERS = [
     # r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\White Coat Ceremony _26",
     # r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Vicky_s Surprise Sweet Sixteen!",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Untitled",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D 4-27",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D @ UBS 4-27",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Quotes n Stuff",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Senior 2020",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Six Flags-Delaware Trip!",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Sixteenth Birthday"
+    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Untitled",
+    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D 4-27",
+    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D @ UBS 4-27",
+    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Quotes n Stuff",
+    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Senior 2020",
+    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Six Flags-Delaware Trip!",
+    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Sixteenth Birthday",
+    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Photos from 2024"
     # "E:\Apps"
 ]
 
@@ -176,7 +180,7 @@ def override_image_save_resolution(img, exif_dict, selected_date, selected_time,
     try:
         # Attempt to dump the EXIF data first without any correction
         exif_bytes = piexif.dump(exif_dict)
-        img.save(dest_media_path, exif=exif_bytes)
+        img.save(dest_media_path, exif=exif_bytes) # DOES NOT WORK WITH .dng
         if isinstance(selected_date, str):
             new_datetime = datetime.datetime.strptime(selected_date, "%Y:%m:%d %H:%M:%S")
         else:
@@ -591,7 +595,7 @@ def extract_dates_from_file(file_path:str):
     # JSON Sidecar files from Google Photos are handled seperately, but gives the preferred Photo Taken Time value
     json_response = drf.get_dategeo_from_JSON(file_path)
     
-    print(json_response)
+    # print(json_response)
     
     
     if json_response is None: 
@@ -765,21 +769,21 @@ def process_all_albums():
                             pwrap("rbg", "Exiting...")
                             automationFlag = False
                             exit(0)
-                        elif (date_extractions[indexed_keys[int(action)-1]] is None): 
-                            
-                            pwrap("rbg", f"Selected Date override [{indexed_keys[int(action)-1]}] is marked as [None].  Refreshing...")
-                            automationFlag = False
-                            continue  # Restart the loop to refresh the information
                         elif action == 'r':
                             pwrap("cbg", "Refreshing...")
                             # automationFlag = False
                             continue  # Restart the loop to refresh the information
-                        else:
-                            # Process action based on the user's valid selection
-                            process_user_action(int(action), file_path, date_extractions)
-                            
-                            
-                            break
+                        elif (action in ['1', '2', '3', '4', '5', '6', '7', '8']):
+                            if (date_extractions[indexed_keys[int(action)-1]] is None): 
+                                
+                                pwrap("rbg", f"Selected Date override [{indexed_keys[int(action)-1]}] is marked as [None].  Refreshing...")
+                                automationFlag = False
+                                continue  # Restart the loop to refresh the information
+
+                            else:
+                                # Process action based on the user's valid selection
+                                process_user_action(int(action), file_path, date_extractions)    
+                                break
                     else:
                         # Print an error message for invalid input and re-ask the question
                         pwrap("r","Invalid input! Please enter a number between 1-8, 'r' to refresh, 'x'to exit.")
