@@ -32,13 +32,14 @@ import piexif
 import ffmpeg
 import struct
 from datetime import datetime, timezone
+from collections import defaultdict
 # Global Vars
 
 LIST_FILE_TYPE = [".jpg", ".png", ".jpeg", ".mp4", ".gif", ".dng", ".webp", ".mov", ".heic"]
 
 LIST_SOURCE_PATH_FOLDERS = [
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\White Coat Ceremony _26",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Vicky_s Surprise Sweet Sixteen!",
+    # r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\White Coat Ceremony _26",
+    # r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Vicky_s Surprise Sweet Sixteen!",
     r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Untitled",
     r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D 4-27",
     r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D @ UBS 4-27",
@@ -74,46 +75,100 @@ def convert_rational_to_degrees(rational):
     return d + (m / 60.0) + (s / 3600.0)
 
 
+def update_video_location_with_ffmpeg(input_file_path, output_file_path, exif_date_str, new_lat, new_lon):
 
-# ========= OVERRIDE PROCESSING ===============
-def copy_and_check(source, destination):
-    if source is None: 
-        print("No Source value provided to copy")
-        return
+    try:
+        # Convert the latitude and longitude into the correct format
+        location_tag = f"+{new_lat:.4f}{new_lon:.4f}/"
+        # # Extract the directory and the filename
+        # directory, filename = os.path.split(output_file_path)
+        # # Prepend 'FFMPEG_' to the filename
+        # new_filename = "FFMPEG_" + filename
+        # # Combine the directory and the new filename
+        # output_file_path = os.path.join(directory, new_filename)
+
+
+        # Update metadata with the new location using ffmpeg
+        ffmpeg.input(input_file_path).output(
+            output_file_path,
+            **{
+                'metadata': f'creation_time={exif_date_str}',
+                'metadata:s:v': f'location={location_tag}'  # Embedding location metadata
+            },
+            vcodec='copy',  # Copy the video stream without re-encoding
+            acodec='copy'   # Copy the audio stream without re-encoding
+        ).global_args('-hide_banner',  '-loglevel', 'info').run(overwrite_output=True)
+        # , 'quiet', '-loglevel'
+        
+        print(f"File saved with updated ffmpeg location to: {output_file_path}")
+    except ffmpeg.Error as e:
+        print(f"\033[91mFFmpeg error: {e}\033[0m")
+
+
+# ========= OVERRIDE VIDEO PROCESSING ===============
+def override_video_data(curr_file_path, destinationfilepath, selected_date, selected_location):
+    print("---------- Overriding Video Data -------------- ")
+    # Convert the selected date to the appropriate format for video metadata
+    exif_date_str = selected_date.strftime("%Y-%m-%dT%H:%M:%S")  # ffmpeg uses this format for metadata
+
+    print("GPS Location DEBUG CHECK")
+    print(selected_location)
+    print(selected_location is None)
+
+
+    if selected_location: 
+        # GPS Data exists
+        # Extract latitude and longitude from the selected location
+        new_lat = selected_location[0]["latitude"]
+        new_lon = selected_location[0]["longitude"]
+
+        try:
+            print("3")
+            # Using ffmpeg-python to extract metadata
+            probe = ffmpeg.probe(curr_file_path)
+            format_info = probe.get('format', {})
+            tags = format_info.get('tags', {})
+            location = tags.get('location', None)
+            
+        except Exception as e:
+            # print(f"FFmpeg error: {e}")
+            return None
+
+        print(location)
+
+        update_video_location_with_ffmpeg(curr_file_path, destinationfilepath,exif_date_str,  new_lat, new_lon)
+
+    else: 
+        # No GPS data, only do dates
+
+        print(">>>>>>>>> DEBUG <<<<<<<<<<<<<")
+        print("FFmpeg module:", ffmpeg)
+        print("Current file path:", curr_file_path)
+        print("Destination file path:", destinationfilepath)
+        print(">>>>>>>>> DEBUG <<<<<<<<<<<<<")
+
+        ffmpeg.input(curr_file_path).output(destinationfilepath,
+        **{
+            'metadata': f'creation_time={exif_date_str}',  # Set video creation time
+        }
+        ).global_args('-hide_banner', '-loglevel', 'info').run()
+
+        print(f"\033[92mVideo metadata updated for {destinationfilepath}\033[0m")
+        
     
-    
-    # Check if the destination file exists before copying
-    file_exists = os.path.exists(destination)
 
-    if file_exists:
-        # Get the timestamp and size of the existing file
-        existing_stat = os.stat(destination)
-        existing_timestamp = existing_stat.st_mtime
-        existing_size = existing_stat.st_size
-
-    # Perform the copy operation with metadata preservation
-    # print("Copying from: ", source)
-    # print("Copying to: ", destination)
-    shutil.copy2(source, destination)
-
-    # Check if the file exists after the copy operation
-    if os.path.exists(destination):
-        # Get the timestamp and size of the copied file
-        copied_stat = os.stat(destination)
-        copied_timestamp = copied_stat.st_mtime
-        copied_size = copied_stat.st_size
-
-        if file_exists:
-            # Compare timestamps and sizes to determine if it was overwritten
-            if (copied_timestamp != existing_timestamp or
-                copied_size != existing_size):
-                print(f"File [{os.path.basename(source)}] copied successfully to {destination} (Overwritten).")
-            else:
-                print(f"File [{os.path.basename(source)}]  already exists at {destination}, and no changes were made.")
-        else:
-            print(f"File [{os.path.basename(source)}]  copied successfully to {destination} (New file created).")
+    if isinstance(selected_date, str):
+        new_datetime = datetime.datetime.strptime(selected_date, "%Y:%m:%d %H:%M:%S")
     else:
-        print("Error: File was not copied.")
+        new_datetime = selected_date
+    
+    timestamp = new_datetime.timestamp()
+
+    # Update file system access and modification times
+    os.utime(destinationfilepath, (timestamp, timestamp))
+    print("---------- Finished Overriding Video Data -------------- ")
+
+# ========= OVERRIDE IMAGE PROCESSING ===============
 
 def override_image_save_resolution(img, exif_dict, selected_date, selected_time, selected_location, dest_media_path, dest_json_path):
     # === Save resolution ====
@@ -257,7 +312,6 @@ def override_image_gps_values(exif_dict, selected_location):
 
     return exif_dict
 
-
 def override_image_date_values(img, exif_dict, selected_date, selected_time): 
     # Seems to only work with jpeg and jpg
     print("EXIF data loaded: ")
@@ -281,7 +335,8 @@ def override_image_date_values(img, exif_dict, selected_date, selected_time):
     exif_dict['Exif'][piexif.ExifIFD.DateTimeDigitized] = exif_date_str
 
     
-    print("EXIF data overridden", str(exif_dict))
+    # print("EXIF data overridden", str(exif_dict))
+    print("EXIF data overridden!")
     return img, exif_dict
 
 def override_image_exif_existence(img): 
@@ -295,14 +350,57 @@ def override_image_exif_existence(img):
         exif_dict = piexif.load(img.info['exif'])
     
     return exif_dict
+
+def copy_and_check(source, destination):
+    print("---------- Copying Files to Destination -------------- ")
+    if source is None: 
+        print("No Source value provided to copy")
+        print("---------- Copy Files end! -------------- ")
+        return
+    
+    
+    # Check if the destination file exists before copying
+    file_exists = os.path.exists(destination)
+
+    if file_exists:
+        # Get the timestamp and size of the existing file
+        existing_stat = os.stat(destination)
+        existing_timestamp = existing_stat.st_mtime
+        existing_size = existing_stat.st_size
+
+    # Perform the copy operation with metadata preservation
+    # print("Copying from: ", source)
+    # print("Copying to: ", destination)
+    shutil.copy2(source, destination)
+
+    # Check if the file exists after the copy operation
+    if os.path.exists(destination):
+        # Get the timestamp and size of the copied file
+        copied_stat = os.stat(destination)
+        copied_timestamp = copied_stat.st_mtime
+        copied_size = copied_stat.st_size
+
+        if file_exists:
+            # Compare timestamps and sizes to determine if it was overwritten
+            if (copied_timestamp != existing_timestamp or
+                copied_size != existing_size):
+                print(f"{swrap("g", "Copy Successful (Overwrite)!")} : File [{os.path.basename(source)}] --> {destination}")
+            else:
+                print(f"{swrap("y", "Copy Skipped (Pre-existing)!")} : File [{os.path.basename(source)}]  EXISTS at {destination}")
+        else:
+            print(f"{swrap("g", "Copy Successful (New File)!")} : File [{os.path.basename(source)}] --> {destination}")
+    else:
+        print(swrap("r", "Error: File was not copied."))
+    print("---------- Copy Files end! -------------- ")
+
 # ========= ACTION PROCESSING =================
 
 def create_destination_paths(action, selected_date,selected_time, selected_location, selected_json_path, file_path): 
-    print ("---------- Creating Destination Path Names -------------")
-    print("Current Media Path: ", file_path)
-    print("Selected Date", selected_date)
-    print("Location Detection: ", selected_location)
-    print("JSON Path if used: ", selected_json_path)
+    print ("---------- Creating Destination Paths Names -------------")
+    print(swrap("under", "Current Media Path: "), file_path)
+    print(swrap("under", "Selected Date"), selected_date)
+    print(swrap("under", "Location Detection: "), selected_location)
+    print(swrap("under", "JSON Path if used: "), selected_json_path)
     
     # file_name = os.path.basename(file_path)
     # base_filename = os.path.basename(file_path)
@@ -350,16 +448,16 @@ def create_destination_paths(action, selected_date,selected_time, selected_locat
     dest_final_media_name = dest_datetime_str + dest_loc_str + base_filename
     dest_final_media_path = os.path.join(_curr_processed_path, dest_final_media_name)
     
-    print("Destination File Name: ", dest_final_media_name)
-    print("Destination File Path: ", dest_final_media_path)
+    print(swrap("under", "Destination File Name: "), dest_final_media_name)
+    print(swrap("under", "Destination File Path: "), dest_final_media_path)
     
     dest_final_json_path = None
     if selected_json_path is not None: 
         base_jsonname = os.path.basename(selected_json_path)
         dest_final_json_name = dest_datetime_str + dest_loc_str + base_jsonname
         dest_final_json_path = os.path.join(_curr_processed_path, dest_final_json_name)
-        print("Destination JSON name: ", dest_final_json_name)
-        print("Destination JSON Path: ", dest_final_json_path)
+        print(swrap("under", "Destination JSON name: "), dest_final_json_name)
+        print(swrap("under", "Destination JSON Path: "), dest_final_json_path)
     else: 
         print("No JSON option was selected")
     
@@ -369,6 +467,7 @@ def create_destination_paths(action, selected_date,selected_time, selected_locat
     
         
 def process_user_action(action:int, curr_media_path:str, date_extractions):
+    print("---------- Processing User Selection --------------")
     # Take the User's Selection and determine selected date/json/time/location values
     print("Action selected: ", action)
     # print(date_extractions)
@@ -416,34 +515,28 @@ def process_user_action(action:int, curr_media_path:str, date_extractions):
     
     known_image_extensions = {'.jpeg', '.jpg', '.bmp', '.png', '.cr2', '.webp', '.dng', '.heic'}
     known_video_extensions = {'.mov', '.mp4', '.avi', '.mkv', '.gif'}
-    _, curr_ext = os.path.splitext(curr_media_path)
-    input("BREAKER POINT")
+    _, curr_ext = os.path.splitext(curr_media_path.lower())
     # if (curr_ext.lower() in known_image_extensions): 
     #     # process as image
     # elise
     
-    if curr_ext in known_image_extensions: 
-        if curr_ext in {'.jpeg', '.jpg', '.bmp', '.png', '.cr2', '.webp', '.dng', '.heic'}: 
+    if curr_ext.lower() in known_image_extensions: 
+        # if curr_ext in {'.jpeg', '.jpg', '.bmp', '.png', '.cr2', '.webp', '.dng', '.heic'}: 
             # Open the image and load existing EXIF data
-            ImageFile.LOAD_TRUNCATED_IMAGES = True
-            img = Image.open(dest_media_path)
-            exif_dict = {}
-            exif_dict = override_image_exif_existence(img)
-            img, exif_dict = override_image_date_values(img, exif_dict, selected_date, selected_time)
-            exif_dict = override_image_gps_values(exif_dict, selected_location)
-            override_image_save_resolution(img, exif_dict, selected_date, selected_time, selected_location, dest_media_path, dest_json_path)
-        elif curr_ext in {}:
-            return
-    elif curr_ext in known_video_extensions: 
-        return
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
+        img = Image.open(dest_media_path)
+        exif_dict = {}
+        exif_dict = override_image_exif_existence(img)
+        img, exif_dict = override_image_date_values(img, exif_dict, selected_date, selected_time)
+        exif_dict = override_image_gps_values(exif_dict, selected_location)
+        override_image_save_resolution(img, exif_dict, selected_date, selected_time, selected_location, dest_media_path, dest_json_path)
+        # elif curr_ext in {}:
+            
+        #     return
+    elif curr_ext.lower() in known_video_extensions: 
+        override_video_data(curr_media_path, dest_media_path, selected_date, selected_location)
+        # return
         
-    
-    
-    # Copy file
-    # Override metadata
-    
-    
-    
 
 # ========== MENU BUILDING ===============
 def parse_json_dategeo_response(data):
@@ -492,10 +585,20 @@ def extract_dates_from_file(file_path:str):
     # Using the file path provided, extract all variations of date values that can exist within a file. 
     # JSON Sidecar files from Google Photos are handled seperately, but gives the preferred Photo Taken Time value
     json_response = drf.get_dategeo_from_JSON(file_path)
+    
     print(json_response)
     
-    creationTime, photoTakenTime, locationData, json_path = parse_json_dategeo_response(json_response)
     
+    if json_response is None: 
+        creationTime = None 
+        photoTakenTime = None
+        locationData = None
+        json_path = None
+    else: 
+        creationTime, photoTakenTime, locationData, json_path = parse_json_dategeo_response(json_response)
+    
+    
+
     return {
         'DateTime in FileName': [drf.get_date_from_filename(file_path), drf.get_time_from_filename(file_path)],
         'FILE_CREATION': drf.get_date_from_creation_date(file_path),
@@ -507,7 +610,7 @@ def extract_dates_from_file(file_path:str):
         'JSON - PhotoTakenTime': photoTakenTime, 
         'JSON - Location Data': locationData ,
         'JSON - Path': json_path
-    }   
+    }, creationTime, photoTakenTime   
 
 
 def pad_counter_header_integer(total_count: int, index: int):
@@ -541,13 +644,36 @@ def create_processed_folder_ifnotexists(file_name: str):
     
     # Set up processed folder path
     _curr_file_type = os.path.splitext(file_name)[-1].lower()  # Extract file extension
-    _curr_processed_path = _curr_source_path + "\\Processed" + "_" + _curr_file_type.replace(".", "")
+    _curr_processed_path = _curr_source_path + "\\XProcessed" + "_" + _curr_file_type.replace(".", "")
     
     #If doesn't exist, create one. 
     if not os.path.exists(_curr_processed_path):
         os.makedirs(_curr_processed_path)
         pwrap("m",f"Folder created: {_curr_processed_path}")
 
+def sort_files_by_extension_and_name(directory):
+    # Get the list of files
+    files = os.listdir(directory)
+    
+    # Create a dictionary to group files by their extension
+    grouped_files = defaultdict(list)
+    
+    # Group files by their extension
+    for file in files:
+        # Split the file name to get the extension (handles files with no extension)
+        extension = file.split('.')[-1] if '.' in file else 'no_extension'
+        grouped_files[extension].append(file)
+    
+    # Sort each group alphabetically
+    for extension in grouped_files:
+        grouped_files[extension].sort()
+    
+    # Create a sorted list of all files, first by extension, then alphabetically within each extension
+    sorted_files = []
+    for extension in sorted(grouped_files.keys()):
+        sorted_files.extend(grouped_files[extension])
+    
+    return sorted_files
 
 
 
@@ -558,7 +684,7 @@ def process_all_albums():
     global _curr_source_path
     #global _curr_processed_path
     #global _curr_file_type
-    
+    automationFlag = False
     # For each folder
     pwrap("reset", "------- PROCESSING ALBUMS STARTED --------------")
     for source_path in LIST_SOURCE_PATH_FOLDERS: 
@@ -570,7 +696,8 @@ def process_all_albums():
             #For each traversal, 
             
             #Sort all the files
-            files = sorted(os.listdir(_curr_source_path))
+            files = sort_files_by_extension_and_name(_curr_source_path)
+            # files = sorted(os.listdir(_curr_source_path))
             index = 1            
             for file_name in files:
                 
@@ -592,32 +719,50 @@ def process_all_albums():
                     while True: 
                         # Header and Menu
                         
-                        date_extractions = extract_dates_from_file(file_path)
+                        date_extractions, json_creation_time, json_photo_taken_time = extract_dates_from_file(file_path)
                         show_menuselection_for_current_file(date_extractions)
-                        
-                        action = input(swrap("y", "Enter 1-8 to select override date, 'r' to refresh, 'x' to exit: \n >>> "))
+                        if automationFlag == False: 
+                            action = input(swrap("y", "Enter 1-8 to select override date, 'r' to refresh, 'x' to exit: \n >>> "))
+                        elif (automationFlag == True and date_extractions['JSON - CreationTime'] is not None):
+                            action = '8'
                         
                         indexed_keys = dict(enumerate(date_extractions.keys()))
                         # action = '1' # AUTO LOOPER
                         
-                        if action in ['1', '2', '3', '4', '5', '6', '7', '8', 'x', 'r']:
+                        if action in ['1', '2', '3', '4', '5', '6', '7', '8', 'x', 'r', 'a']:
+                            if action == 'a':
+                                if (json_creation_time is not None or json_photo_taken_time is not None): 
+                                    # action = 8
+                                    action = '8'
+                                    automationFlag = True
+                                else:
+                                    automationFlag = False
+                                    action = "r"
+                                    pwrap("rbg", f"{json_creation_time is not None}: {json_creation_time}")
+                                    pwrap("rbg", f"{json_photo_taken_time is not None}: {json_photo_taken_time}")
+                                    pwrap("rbg", f"{(json_creation_time is not None or json_photo_taken_time is not None)}")
+                                    pwrap("rbg", "ERROR: Could not automate, json flag is None")
+                                    continue
+                                
+                                
                             if action == 'x':
                                 pwrap("rbg", "Exiting...")
+                                automationFlag = False
                                 exit(0)
                             elif (date_extractions[indexed_keys[int(action)-1]] is None): 
                                 
                                 pwrap("rbg", f"Selected Date override [{indexed_keys[int(action)-1]}] is marked as [None].  Refreshing...")
+                                automationFlag = False
                                 continue  # Restart the loop to refresh the information
                             elif action == 'r':
                                 pwrap("cbg", "Refreshing...")
+                                # automationFlag = False
                                 continue  # Restart the loop to refresh the information
                             else:
                                 # Process action based on the user's valid selection
                                 process_user_action(int(action), file_path, date_extractions)
                                 
                                 
-                                # Stopper 
-                                input("STOPPER LINE")
                                 break
                         else:
                             # Print an error message for invalid input and re-ask the question

@@ -108,3 +108,4 @@ def swrap_test():
     print(swrap("italic", " [italic] \t The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
     print(swrap("under",  " [under] \t The Quick Brown Fox Jumps Over The Lazy Dog. !@#$%^&*()-=_+[]{}\\|;':"",./<>?"))
 
+swrap_test()
