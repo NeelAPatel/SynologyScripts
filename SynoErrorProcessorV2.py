@@ -40,22 +40,12 @@ import datetime
 import os
 from pathlib import Path
 logging.getLogger("hachoir").setLevel(logging.ERROR)
-
+from fractions import Fraction
 
 LIST_FILE_TYPE = [".jpg", ".png", ".jpeg", ".mp4", ".gif", ".dng", ".webp", ".mov", ".heic"]
 
 LIST_SOURCE_PATH_FOLDERS = [
     # r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\White Coat Ceremony _26",
-    # r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Vicky_s Surprise Sweet Sixteen!",
-    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Untitled",
-    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D 4-27",
-    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\SUGA _ AGUST D @ UBS 4-27",
-    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Quotes n Stuff",
-    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Senior 2020",
-    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Six Flags-Delaware Trip!",
-    #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Sixteenth Birthday",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Photos from 2024" #Has 1 file error
-    # "E:\Apps"
 ]
 
 
@@ -178,25 +168,32 @@ def override_video_data(curr_file_path, destinationfilepath, selected_date, sele
     print("---------- Finished Overriding Video Data -------------- ")
 
 # ========= OVERRIDE IMAGE PROCESSING ===============
+def to_rational(value):
+    frac = Fraction(value).limit_denominator()
+    return (frac.numerator, frac.denominator)
 
 def override_image_save_resolution(img, exif_dict, selected_date, selected_time, selected_location, dest_media_path, dest_json_path):
     # === Save resolution ====
     try:
-        # Attempt to dump the EXIF data first without any correction
+        
+    #     # Attempt to dump the EXIF data first without any correction
+        # pwrap("ybg", " ========================= NEEDS DEBUGGING =================================" )
+        # print("EXIF_DICT")
+        # print(exif_dict)
+        exif_dict["Exif"].pop(41729, None)
         exif_bytes = piexif.dump(exif_dict)
         img.save(dest_media_path, exif=exif_bytes) # DOES NOT WORK WITH .dng
         if isinstance(selected_date, str):
             new_datetime = datetime.datetime.strptime(selected_date, "%Y:%m:%d %H:%M:%S")
         else:
             new_datetime = selected_date
-        
+            
         timestamp = new_datetime.timestamp()
-
-        # Update file system times
+        
+        
         os.utime(dest_media_path, (timestamp, timestamp))
+
         print(f"\033[92mOVERRIDE COMPLETE! EXIF data successfully updated for {dest_media_path}\033[0m")
-        
-        
         return  # Success, so return early
     except struct.error as e:
         print(f"\033[91mERROR: Initial EXIF dump failed! {e}\033[0m")
@@ -302,6 +299,7 @@ def override_image_gps_values(exif_dict, selected_location):
         print("GPS data found in JSON Only = Overwring with Matching GPS Data")
 
         gps_data = exif_dict[exif_dict]
+        # gps_data = {}
         new_lat = selected_location[0]["latitude"]
         new_lon = selected_location[0]["longitude"]
         
