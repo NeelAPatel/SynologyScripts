@@ -35,6 +35,10 @@ from datetime import datetime, timezone
 from collections import defaultdict
 # Global Vars
 import logging
+import subprocess
+import datetime
+import os
+from pathlib import Path
 logging.getLogger("hachoir").setLevel(logging.ERROR)
 
 
@@ -50,7 +54,7 @@ LIST_SOURCE_PATH_FOLDERS = [
     #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Senior 2020",
     #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Six Flags-Delaware Trip!",
     #r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Sixteenth Birthday",
-    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Photos from 2024"
+    r"F:\GPhotos Takeout - Nidhi - Dec31\Takeout\Google Photos - Copy\NEEDSFIXING\Photos from 2024" #Has 1 file error
     # "E:\Apps"
 ]
 
@@ -470,7 +474,90 @@ def create_destination_paths(action, selected_date,selected_time, selected_locat
     print ("----------  Destination Path created! -------------")
     return dest_final_media_path, dest_final_json_path
     
-        
+def override_dng_metadata_with_exiftool(dest_media_path, selected_date, selected_time, selected_location):
+    """
+    Updates EXIF metadata for DNG files using exiftool.
+    This updates DateTimeOriginal and GPS tags directly in the file.
+    """
+
+    print(f"\n🔧 Starting EXIF override for: {dest_media_path}")
+
+    try:
+        # Step 1: Convert date
+        print(f"📅 Parsing date: {selected_date}")
+        if isinstance(selected_date, str):
+            new_datetime = datetime.datetime.strptime(selected_date, "%Y:%m:%d %H:%M:%S")
+        else:
+            new_datetime = selected_date
+
+        timestamp_str = new_datetime.strftime("%Y:%m:%d %H:%M:%S")
+        print(f"✅ Date parsed as: {timestamp_str}")
+
+        # Step 2: Build exiftool command
+        print("⚙️ Building exiftool command...")
+        cmd = [
+            "exiftool",
+            f"-DateTimeOriginal={timestamp_str}",
+            f"-CreateDate={timestamp_str}",
+            f"-ModifyDate={timestamp_str}"
+        ]
+
+        # # Step 3: Add GPS metadata
+        # if selected_location:
+        #     print("🗺️ Adding GPS metadata...")
+
+        #     lat = selected_location.get("latitude")
+        #     lon = selected_location.get("longitude")
+        #     alt = selected_location.get("altitude")
+
+        #     if lat is not None and lon is not None:
+        #         print(f"   → Latitude: {lat}")
+        #         print(f"   → Longitude: {lon}")
+
+        #         cmd.append(f"-GPSLatitude={abs(lat)}")
+        #         cmd.append(f"-GPSLatitudeRef={'N' if lat >= 0 else 'S'}")
+
+        #         cmd.append(f"-GPSLongitude={abs(lon)}")
+        #         cmd.append(f"-GPSLongitudeRef={'E' if lon >= 0 else 'W'}")
+        #     else:
+        #         print("⚠️ Missing GPS latitude/longitude")
+
+        #     if alt is not None:
+        #         print(f"   → Altitude: {alt}")
+        #         cmd.append(f"-GPSAltitude={alt}")
+        #     else:
+        #         print("⚠️ Missing GPS altitude")
+        # else:
+        #     print("⚠️ No GPS data provided")
+
+        # Step 4: Add overwrite + target path
+        cmd.append("-overwrite_original")
+        cmd.append(dest_media_path)
+
+        # Step 5: Print full command
+        print(f"\n📤 Running exiftool command:\n{' '.join(cmd)}")
+
+        # Step 6: Run the command
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # Step 7: Evaluate result
+        if result.returncode == 0:
+            print(f"\n✅ EXIF metadata successfully written to: {dest_media_path}")
+
+            # Step 8: Update OS timestamps
+            os.utime(dest_media_path, (new_datetime.timestamp(), new_datetime.timestamp()))
+            print(f"🕒 File system timestamps updated to: {new_datetime}")
+        else:
+            print(f"\n❌ ERROR: exiftool failed for {dest_media_path}")
+            print(f"🧾 STDOUT:\n{result.stdout}")
+            print(f"🧾 STDERR:\n{result.stderr}")
+
+    except Exception as e:
+        print(f"\n🔥 EXCEPTION: {e}")
+        raise  # Optional: comment this out if you want to continue after failure
+
+
+
 def process_user_action(action:int, curr_media_path:str, date_extractions):
     print("---------- Processing User Selection --------------")
     # Take the User's Selection and determine selected date/json/time/location values
@@ -526,15 +613,17 @@ def process_user_action(action:int, curr_media_path:str, date_extractions):
     # elise
     
     if curr_ext.lower() in known_image_extensions: 
-        # if curr_ext in {'.jpeg', '.jpg', '.bmp', '.png', '.cr2', '.webp', '.dng', '.heic'}: 
+        if curr_ext in {'.jpeg', '.jpg', '.bmp', '.png', '.cr2', '.webp', '.heic'}: 
             # Open the image and load existing EXIF data
-        ImageFile.LOAD_TRUNCATED_IMAGES = True
-        img = Image.open(dest_media_path)
-        exif_dict = {}
-        exif_dict = override_image_exif_existence(img)
-        img, exif_dict = override_image_date_values(img, exif_dict, selected_date, selected_time)
-        exif_dict = override_image_gps_values(exif_dict, selected_location)
-        override_image_save_resolution(img, exif_dict, selected_date, selected_time, selected_location, dest_media_path, dest_json_path)
+            ImageFile.LOAD_TRUNCATED_IMAGES = True
+            img = Image.open(dest_media_path)
+            exif_dict = {}
+            exif_dict = override_image_exif_existence(img)
+            img, exif_dict = override_image_date_values(img, exif_dict, selected_date, selected_time)
+            exif_dict = override_image_gps_values(exif_dict, selected_location)
+            override_image_save_resolution(img, exif_dict, selected_date, selected_time, selected_location, dest_media_path, dest_json_path)
+        elif (curr_ext in {'.dng'}):
+            override_dng_metadata_with_exiftool(dest_media_path, selected_date, selected_time, selected_location)
         # elif curr_ext in {}:
             
         #     return
